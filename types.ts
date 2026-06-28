@@ -2,6 +2,7 @@
 export interface ReceiptItem {
   id: string;
   name: string;
+  quantity: number;
   originalPrice: number;
 }
 

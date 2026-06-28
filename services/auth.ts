@@ -16,6 +16,11 @@ const REMEMBER_KEY = "splitSmart_remembered";
 let idToken: string | null = null;
 let user: AuthUser | null = null;
 let initializedClientId: string | null = null;
+// Pending timer that fires a silent refresh shortly before the current token
+// expires, so a long-lived session never hits a 401 mid-use.
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+// Refresh this many ms before the token's exp so the new token is ready in time.
+const REFRESH_LEAD_MS = 2 * 60_000;
 // True while a silent re-authentication is expected/in flight on launch, so the
 // UI can show a loading state instead of flashing the sign-in screen.
 let authResolving = false;
@@ -51,6 +56,7 @@ function setToken(token: string | null) {
     // Mark this user as remembered so we can silently refresh after the token
     // expires (Google ID tokens live only ~1h).
     localStorage.setItem(REMEMBER_KEY, "1");
+    scheduleRefresh(decoded.exp);
   } else {
     clearToken();
     return;
@@ -58,11 +64,30 @@ function setToken(token: string | null) {
   listeners.forEach((l) => l());
 }
 
+// Ask GIS to silently mint a fresh ID token (no UI when a Google session
+// exists). The new credential flows back through the initialize() callback.
+function silentRefresh() {
+  const google = (window as any).google;
+  if (!isRemembered() || !google?.accounts?.id) return;
+  google.accounts.id.prompt();
+}
+
+// Schedule a silent refresh shortly before `exp` (a unix-seconds timestamp).
+function scheduleRefresh(exp: number) {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = null;
+  const fireInMs = exp * 1000 - Date.now() - REFRESH_LEAD_MS;
+  // setTimeout clamps huge/negative delays oddly; floor at ~1s and only schedule
+  // when the lead window is still ahead of us.
+  refreshTimer = setTimeout(silentRefresh, Math.max(1000, fireInMs));
+}
+
 // Drop only the short-lived token (e.g. it expired) while keeping the
 // "remembered" flag, so the next launch can silently re-authenticate.
 function dropToken() {
   idToken = null;
   user = null;
+  if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
   if (typeof localStorage !== "undefined") localStorage.removeItem(STORAGE_KEY);
   listeners.forEach((l) => l());
 }

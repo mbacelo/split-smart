@@ -13,9 +13,10 @@ const RECEIPT_SCHEMA = {
         additionalProperties: false,
         properties: {
           name: { type: "string" },
+          quantity: { type: "number" },
           price: { type: "number" },
         },
-        required: ["name", "price"],
+        required: ["name", "quantity", "price"],
       },
     },
     total: { type: "number" },

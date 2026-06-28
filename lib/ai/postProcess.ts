@@ -22,9 +22,10 @@ export const toProcessedReceipt = (data: ReceiptAnalysis): ProcessedReceipt => {
       const lowName = item.name.toLowerCase();
       return !noiseKeywords.some(keyword => lowName.includes(keyword));
     })
-    .map((item, index) => ({
-      id: `item-${index}-${Date.now()}`,
+    .map((item) => ({
+      id: crypto.randomUUID(),
       name: item.name,
+      quantity: typeof item.quantity === 'number' && item.quantity > 0 ? Math.round(item.quantity) : 1,
       originalPrice: item.price,
     }));
 

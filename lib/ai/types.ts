@@ -4,7 +4,7 @@
 
 /** Raw result an AI provider must return: line items + the final total. */
 export interface ReceiptAnalysis {
-  items: { name: string; price: number }[];
+  items: { name: string; quantity: number; price: number }[];
   total: number;
 }
 
@@ -24,4 +24,4 @@ export const RECEIPT_PROMPT = `Analyze this receipt.
 2. STRICT RULE: DO NOT include Tax, Tip, Gratuity, Service Charges, Surcharges, or Discounts in the "items" list. These should be ignored.
 3. Extract the absolute final total amount paid as "total". This must include everything (tax, tip, fees).
 4. Ensure prices are numbers without currency symbols.
-5. Include the quantity in the item "name" when it is greater than 1, prefixed as a count (e.g. "2x Burger", "3x Coffee"). For single items omit the count. The "price" must be the total price for that line (quantity × unit price), exactly as it appears on the receipt.`;
+5. For each item set "quantity" to the number of units on that line (default 1 if not shown). Keep the "name" clean, WITHOUT any quantity prefix (e.g. "Burger", not "2x Burger"). The "price" must be the total price for that line (quantity × unit price), exactly as it appears on the receipt.`;
