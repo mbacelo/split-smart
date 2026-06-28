@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Person } from '../types';
 import { XIcon, RotateCcwIcon, PlusIcon, TrashIcon } from './Icons';
+import { getColorClasses } from './personColors';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -121,9 +122,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
             <div className="p-6 space-y-4 overflow-y-auto flex-1 animate-fade-in no-scrollbar">
               {editedPeople.map((person, index) => {
                 const isNameEmpty = person.name.trim().length === 0;
+                const c = getColorClasses(person.color);
                 return (
                   <div key={person.id} className="flex items-center space-x-3 group">
-                    <div className={`w-10 h-10 shrink-0 rounded-full bg-${person.color}-100 flex items-center justify-center text-${person.color}-600 font-bold text-sm border border-${person.color}-200 shadow-sm transition-transform group-focus-within:scale-110`}>
+                    <div className={`w-10 h-10 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-sm border ${c.borderSoft} shadow-sm transition-transform group-focus-within:scale-110`}>
                       {person.name.trim().charAt(0) || '?'}
                     </div>
                     <div className="relative flex-1">
