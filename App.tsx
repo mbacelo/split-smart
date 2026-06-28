@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, ReceiptItem, AssignmentState } from './types';
 import { analyzeReceipt } from './services/receiptService';
-import { getUser, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
+import { getUser, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
 import { ImageUploader } from './components/ImageUploader';
 import { ReceiptIcon, CheckIcon, UserIcon, SettingsIcon, PlusIcon, XIcon, SettingsIcon as EditIcon, ShareIcon } from './components/Icons';
 import { formatCurrency } from './utils/currency';
@@ -53,12 +53,17 @@ export default function App() {
 
   // Auth: subscribe to sign-in state from the Google Identity wrapper.
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
+  const [resolvingAuth, setResolvingAuth] = useState<boolean>(() => isAuthResolving());
   const signInButtonRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => subscribe(() => setUser(getUser())), []);
+  useEffect(() => subscribe(() => {
+    setUser(getUser());
+    setResolvingAuth(isAuthResolving());
+  }), []);
 
-  // Render the Google Sign-In button whenever we're signed out and the GIS
-  // script is available. Poll briefly in case the script loads after mount.
+  // Initialize GIS whenever we're signed out (this also fires the silent
+  // re-auth prompt for remembered users) and render the fallback Sign-In
+  // button. Poll briefly in case the script loads after mount.
   useEffect(() => {
     if (user || !signInButtonRef.current) return;
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
@@ -332,7 +337,18 @@ export default function App() {
         <p className="text-slate-600 text-center max-w-sm mb-8">
           Sign in to split bills with AI. Access is currently limited to approved accounts.
         </p>
-        <div ref={signInButtonRef} />
+        {resolvingAuth && (
+          <div className="flex items-center gap-3 text-slate-500" role="status" aria-live="polite">
+            <svg className="animate-spin w-5 h-5 text-indigo-600" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+            <span className="text-sm font-medium">Signing you in…</span>
+          </div>
+        )}
+        {/* Kept mounted (hidden while resolving) so GIS can initialize and run
+            the silent re-auth prompt; revealed if the silent attempt fails. */}
+        <div ref={signInButtonRef} className={resolvingAuth ? 'hidden' : ''} />
       </div>
     );
   }
