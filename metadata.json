@@ -1,0 +1,8 @@
+{
+  "name": "SplitSmart - AI Expense Splitter",
+  "description": "Effortlessly split bills and receipts using AI. Upload a photo, extract items, and assign them to friends with automatic tax and tip calculations.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
