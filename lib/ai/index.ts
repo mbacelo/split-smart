@@ -1,8 +1,8 @@
-import { AIProvider } from "./types";
-import { openAIProvider } from "./providers/openai";
+import { AIProvider } from "./types.js";
+import { openAIProvider } from "./providers/openai.js";
 
-export type { AIProvider, ReceiptAnalysis } from "./types";
-export { toProcessedReceipt } from "./postProcess";
+export type { AIProvider, ReceiptAnalysis } from "./types.js";
+export { toProcessedReceipt } from "./postProcess.js";
 
 /**
  * Returns the active AI provider based on the AI_PROVIDER env var (default "openai").

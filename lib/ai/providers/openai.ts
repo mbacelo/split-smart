@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { AIProvider, ReceiptAnalysis, RECEIPT_PROMPT } from "../types";
+import { AIProvider, ReceiptAnalysis, RECEIPT_PROMPT } from "../types.js";
 
 // JSON schema forcing the model to return exactly { items: [{name, price}], total }.
 const RECEIPT_SCHEMA = {

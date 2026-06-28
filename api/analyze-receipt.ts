@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { OAuth2Client } from "google-auth-library";
-import { getProvider, toProcessedReceipt } from "../lib/ai";
+import { getProvider, toProcessedReceipt } from "../lib/ai/index.js";
 
 // Allow base64 image payloads (a photo can be a few MB once base64-encoded).
 export const config = {

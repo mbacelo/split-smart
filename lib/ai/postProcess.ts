@@ -1,5 +1,5 @@
-import { ProcessedReceipt } from "../../types";
-import { ReceiptAnalysis } from "./types";
+import { ProcessedReceipt } from "../../types.js";
+import { ReceiptAnalysis } from "./types.js";
 
 // Keywords used to filter out non-consumable lines (tax, tips, fees, payment
 // lines, etc.) in case the model includes them despite the prompt. Kept
