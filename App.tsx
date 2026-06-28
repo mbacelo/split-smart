@@ -8,6 +8,7 @@ import { ReceiptIcon, CheckIcon, UserIcon, SettingsIcon, PlusIcon, XIcon, Settin
 import { formatCurrency } from './utils/currency';
 import { PersonCard } from './components/PersonCard';
 import { SettingsModal } from './components/SettingsModal';
+import { getColorClasses } from './components/personColors';
 
 // Initial People Data Generator
 const getInitialPeople = (): Person[] => [
@@ -319,7 +320,7 @@ export default function App() {
 
   const getPersonColorClass = (personId: string) => {
     const person = state.people.find(p => p.id === personId);
-    return person ? `bg-${person.color}-500` : 'bg-slate-400';
+    return person ? getColorClasses(person.color).bgSolid : 'bg-slate-400';
   };
   
   const activePerson = state.people.find(p => p.id === activePersonId);
@@ -502,8 +503,9 @@ export default function App() {
                           const assignedPersonIds = (state.assignments[item.id] || []).filter(pid => state.people.some(p => p.id === pid));
                           const isAssignedToActive = activePersonId && assignedPersonIds.includes(activePersonId);
                           const activeColor = activePerson?.color;
-                          const bgClass = isAssignedToActive && activeColor 
-                            ? `bg-${activeColor}-50` 
+                          const ac = activeColor ? getColorClasses(activeColor) : null;
+                          const bgClass = isAssignedToActive && ac
+                            ? ac.bgSubtle
                             : 'hover:bg-slate-50';
 
                           return (
@@ -515,14 +517,14 @@ export default function App() {
                               <div className="flex-1 min-w-0 pr-4">
                                   <div className="flex items-center space-x-3">
                                       <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200
-                                          ${isAssignedToActive && activeColor 
-                                            ? `bg-${activeColor}-500 border-${activeColor}-500 text-white scale-110` 
+                                          ${isAssignedToActive && ac
+                                            ? `${ac.bgSolid} ${ac.borderSelected} text-white scale-110`
                                             : 'border-slate-200 text-transparent bg-white'
                                           }
                                       `}>
                                           <CheckIcon className="w-4 h-4" />
                                       </div>
-                                      <p className={`text-sm sm:text-base font-medium truncate ${isAssignedToActive && activeColor ? `text-${activeColor}-900` : 'text-slate-700'}`}>
+                                      <p className={`text-sm sm:text-base font-medium truncate ${isAssignedToActive && ac ? ac.textStrong : 'text-slate-700'}`}>
                                           {item.name}
                                       </p>
                                   </div>
@@ -578,6 +580,10 @@ export default function App() {
                                         placeholder="0.00"
                                         value={editingTotal.value || ''}
                                         onChange={(e) => setEditingTotal(prev => ({ ...prev, value: parseFloat(e.target.value) || 0 }))}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') { e.preventDefault(); applyTotalEdit(); }
+                                            else if (e.key === 'Escape') { e.preventDefault(); cancelTotalEdit(); }
+                                        }}
                                         className="w-full pl-6 pr-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-base"
                                     />
                                 </div>
@@ -633,6 +639,10 @@ export default function App() {
                                         max="100"
                                         value={editingDiscount.value || ''}
                                         onChange={(e) => setEditingDiscount(prev => ({ ...prev, value: parseFloat(e.target.value) || 0 }))}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') { e.preventDefault(); applyDiscountEdit(); }
+                                            else if (e.key === 'Escape') { e.preventDefault(); cancelDiscountEdit(); }
+                                        }}
                                         className="w-full pl-3 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-base"
                                     />
                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">%</span>
@@ -743,7 +753,8 @@ export default function App() {
                 {state.people.map(person => {
                    const isActive = person.id === activePersonId;
                    const total = personTotals[person.id] || 0;
-                   
+                   const pc = getColorClasses(person.color);
+
                    return (
                      <button
                        key={person.id}
@@ -752,10 +763,10 @@ export default function App() {
                        style={{ minWidth: '70px' }}
                      >
                        <div className={`relative w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm mb-1 border-2 transition-colors
-                          ${isActive ? `border-${person.color}-600 bg-${person.color}-500 shadow-md` : `border-transparent bg-${person.color}-400`}`}>
+                          ${isActive ? `${pc.borderStrong} ${pc.bgSolid} shadow-md` : `border-transparent ${pc.bgSolidMuted}`}`}>
                           {person.name.charAt(0)}
                           {isActive && (
-                            <div className={`absolute -top-1 -right-1 w-4 h-4 bg-${person.color}-600 rounded-full border-2 border-white flex items-center justify-center`}>
+                            <div className={`absolute -top-1 -right-1 w-4 h-4 ${pc.bgSolidStrong} rounded-full border-2 border-white flex items-center justify-center`}>
                               <CheckIcon className="w-2.5 h-2.5 text-white" />
                             </div>
                           )}
@@ -763,7 +774,7 @@ export default function App() {
                        <span className={`text-[11px] font-bold truncate max-w-[64px] ${isActive ? 'text-slate-800' : 'text-slate-500'}`}>
                           {person.name.split(' ')[0]}
                        </span>
-                       <span className={`text-[10px] font-semibold ${isActive ? `text-${person.color}-600` : 'text-slate-400'}`}>
+                       <span className={`text-[10px] font-semibold ${isActive ? pc.text : 'text-slate-400'}`}>
                           {formatCurrency(total)}
                        </span>
                      </button>

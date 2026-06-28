@@ -118,10 +118,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected })
             — or drag & drop —
           </p>
         </div>
-
-        <div className="text-[11px] font-medium text-slate-400 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 inline-block">
-          JPEG, PNG, WEBP, HEIC
-        </div>
+                
       </div>
     </div>
   );

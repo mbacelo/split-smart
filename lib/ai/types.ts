@@ -23,4 +23,5 @@ export const RECEIPT_PROMPT = `Analyze this receipt.
 1. Extract all line items representing actual products, food, or drinks into the "items" array.
 2. STRICT RULE: DO NOT include Tax, Tip, Gratuity, Service Charges, Surcharges, or Discounts in the "items" list. These should be ignored.
 3. Extract the absolute final total amount paid as "total". This must include everything (tax, tip, fees).
-4. Ensure prices are numbers without currency symbols.`;
+4. Ensure prices are numbers without currency symbols.
+5. Include the quantity in the item "name" when it is greater than 1, prefixed as a count (e.g. "2x Burger", "3x Coffee"). For single items omit the count. The "price" must be the total price for that line (quantity × unit price), exactly as it appears on the receipt.`;

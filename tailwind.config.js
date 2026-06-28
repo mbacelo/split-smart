@@ -11,10 +11,15 @@ const PERSON_COLORS = [
 const safelist = PERSON_COLORS.flatMap((c) => [
   `ring-${c}-500`,
   `border-${c}-500`,
+  `border-${c}-600`,
   `border-${c}-200`,
   `bg-${c}-50`,
   `bg-${c}-100`,
+  `bg-${c}-400`,
+  `bg-${c}-500`,
+  `bg-${c}-600`,
   `text-${c}-600`,
+  `text-${c}-900`,
 ]);
 
 export default {
