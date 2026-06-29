@@ -12,7 +12,7 @@ const SESSION_KEY = 'splitSmart_session';
 
 // Bump when the persisted session shape changes so stale data is discarded
 // rather than rehydrated into an incompatible state.
-const SESSION_VERSION = 3;
+const SESSION_VERSION = 4;
 
 interface PersistedSession {
   v: number;
@@ -25,6 +25,7 @@ interface PersistedSession {
   // for cross-checking. May be absent if storage was full when it was saved.
   receiptImage?: string | null;
   manualEntry?: boolean;
+  manualTotalOverride?: number | null;
 }
 
 // Two people is the minimum needed to split; users add more as needed via the
@@ -74,6 +75,7 @@ export const makeInitialState = (): AppState => {
     people,
     error: null,
     manualEntry: session?.manualEntry ?? false,
+    manualTotalOverride: session?.manualTotalOverride ?? null,
   };
 };
 
@@ -105,6 +107,7 @@ export const saveSession = (state: AppState): void => {
       assignments: state.assignments,
       receiptImage: state.receiptImage,
       manualEntry: state.manualEntry,
+      manualTotalOverride: state.manualTotalOverride,
     };
     try {
       localStorage.setItem(SESSION_KEY, JSON.stringify(payload));

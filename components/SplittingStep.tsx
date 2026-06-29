@@ -4,7 +4,7 @@ import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses, defaultPersonName } from './personColors';
 import { PersonCard } from './PersonCard';
-import { CheckIcon, PlusIcon, XIcon, TrashIcon, SettingsIcon as EditIcon, ShareIcon, UsersIcon, ReceiptIcon } from './Icons';
+import { CheckIcon, PlusIcon, XIcon, TrashIcon, SettingsIcon as EditIcon, ShareIcon, UsersIcon, ReceiptIcon, RotateCcwIcon } from './Icons';
 
 interface EditState { active: boolean; value: number; }
 
@@ -13,8 +13,9 @@ type ItemPatch = Partial<Pick<ReceiptItem, 'name' | 'quantity' | 'originalPrice'
 interface SplittingStepProps {
   state: AppState;
   stats: SplitStats;
-  // Manual entry: total derives from the items, so the "edit total" affordances
-  // are hidden and the totals are labelled as the items' own sum.
+  // Manual entry: the total tracks the items' sum by default, but can be pinned
+  // to an explicit override (state.manualTotalOverride) — see the edit-total
+  // affordances below, which gain a "back to auto" reset in this mode.
   manualEntry: boolean;
   receiptImage: string | null;
   activePersonId: string | null;
@@ -39,6 +40,7 @@ interface SplittingStepProps {
   onChangeTotalEdit: (value: number) => void;
   onApplyTotalEdit: () => void;
   onCancelTotalEdit: () => void;
+  onClearTotalOverride: () => void;
   // Discount editing
   editingDiscount: EditState;
   onOpenDiscountEdit: () => void;
@@ -72,6 +74,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   onChangeTotalEdit,
   onApplyTotalEdit,
   onCancelTotalEdit,
+  onClearTotalOverride,
   editingDiscount,
   onOpenDiscountEdit,
   onChangeDiscountEdit,
@@ -87,6 +90,13 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
     itemsTotalSum,
     adjustmentFactor,
   } = stats;
+
+  // The editable pre-discount base total and its label differ by mode:
+  // scanned → the scanned receipt total; manual → the items sum, or the pinned
+  // override when the user has set one.
+  const totalOverridden = manualEntry && state.manualTotalOverride != null;
+  const baseTotal = manualEntry ? (state.manualTotalOverride ?? itemsTotalSum) : state.total;
+  const baseTotalLabel = manualEntry ? (totalOverridden ? 'Total' : 'Items Total') : 'Receipt Total';
 
   const getPersonColorClass = (personId: string) => {
     const person = state.people.find((p) => p.id === personId);
@@ -161,15 +171,13 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         </div>
         <div className="flex flex-col items-end">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Final Total</span>
-          {manualEntry ? (
-            <div className="flex items-center gap-1.5">
-              {state.discount > 0 && (
-                <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded font-bold">-{state.discount}%</span>
-              )}
-              <span className="font-bold text-lg text-slate-900 leading-none">{formatCurrency(effectiveTotal)}</span>
-            </div>
-          ) : editingTotal.active ? (
+          {editingTotal.active ? (
             <div className="flex items-center gap-1 mt-0.5">
+              {totalOverridden && (
+                <button onClick={onClearTotalOverride} title="Back to items total" className="p-1 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors active:scale-90">
+                  <RotateCcwIcon className="w-4 h-4" />
+                </button>
+              )}
               <div className="relative w-24">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
                 <input
@@ -197,7 +205,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             <button
               onClick={onOpenTotalEdit}
               className="flex items-center gap-1.5"
-              title="Tap to correct the total"
+              title={manualEntry ? 'Tap to override the total' : 'Tap to correct the total'}
             >
               {state.discount > 0 && (
                 <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded font-bold">-{state.discount}%</span>
@@ -243,13 +251,9 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 {isEditingItems && <CancelEditButton onClick={onCancelEditItems} />}
               </div>
               <div className="flex flex-col items-end">
-                {manualEntry ? (
-                  <div className="text-sm text-slate-500">
-                    Items Total: <span className="font-bold text-slate-900">{formatCurrency(itemsTotalSum)}</span>
-                  </div>
-                ) : editingTotal.active ? (
+                {editingTotal.active ? (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm text-slate-500">Receipt Total:</span>
+                    <span className="text-sm text-slate-500">{baseTotalLabel}:</span>
                     <div className="relative w-28">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
                       <input
@@ -266,6 +270,11 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                         className="w-full pl-6 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm"
                       />
                     </div>
+                    {totalOverridden && (
+                      <button onClick={onClearTotalOverride} title="Back to items total" className="p-1.5 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors active:scale-90">
+                        <RotateCcwIcon className="w-4 h-4" />
+                      </button>
+                    )}
                     <button onClick={onApplyTotalEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
                       <CheckIcon className="w-4 h-4" />
                     </button>
@@ -278,11 +287,17 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     <button
                       onClick={onOpenTotalEdit}
                       className="text-sm text-slate-500 flex items-center gap-2 hover:text-indigo-600 transition-colors group"
-                      title="Tap to correct the total"
+                      title={manualEntry ? 'Tap to override the total' : 'Tap to correct the total'}
                     >
-                      Receipt Total: <span className="font-bold text-slate-900">{formatCurrency(state.total)}</span>
+                      {baseTotalLabel}: <span className="font-bold text-slate-900">{formatCurrency(baseTotal)}</span>
                       <EditIcon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </button>
+                    {manualEntry && !totalOverridden && (
+                      <div className="text-[11px] text-slate-400">Auto from items — tap to override</div>
+                    )}
+                    {totalOverridden && (
+                      <div className="text-[11px] text-indigo-500 font-medium">Items sum: {formatCurrency(itemsTotalSum)}</div>
+                    )}
                     {state.discount > 0 && (
                       <div className="text-xs text-red-500 font-medium">
                         Discount: -{state.discount}% ({formatCurrency(discountAmount)})
@@ -458,7 +473,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
           </div>
 
           {/* Scaling logic summary */}
-          {!manualEntry && adjustmentFactor !== 1 && (
+          {adjustmentFactor !== 1 && (
             <div className="mx-4 lg:mx-0 bg-yellow-50 text-yellow-800 text-xs p-3 rounded-lg border border-yellow-200 flex gap-2">
               <span className="font-bold shrink-0">Scaling Logic:</span>
               <p>
@@ -522,8 +537,8 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
 
             <div className="mt-6 pt-6 border-t border-slate-200 space-y-2">
               <div className="w-full flex justify-between items-center text-sm text-slate-500">
-                <span>{manualEntry ? 'Items Total' : 'Receipt Total'}</span>
-                <span className="font-medium">{formatCurrency(manualEntry ? itemsTotalSum : state.total)}</span>
+                <span>{baseTotalLabel}</span>
+                <span className="font-medium">{formatCurrency(baseTotal)}</span>
               </div>
               {state.discount > 0 && (
                 <div className="flex justify-between items-center text-sm text-red-500 font-medium">

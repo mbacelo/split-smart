@@ -35,4 +35,10 @@ export interface AppState {
   // receipt total to scale items against — the total is simply the sum of the
   // items the user types in. See computeStats for how this changes the math.
   manualEntry: boolean;
+  // Manual entry only: an optional user-supplied grand total that overrides the
+  // auto-computed items sum. null means "track the items sum automatically";
+  // a number means the user pinned a total (e.g. to fold in a global discount
+  // or extra charge not present on any line), and items scale to match it just
+  // like a scanned receipt total. Ignored when manualEntry is false.
+  manualTotalOverride: number | null;
 }

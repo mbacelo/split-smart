@@ -75,7 +75,7 @@ export default function App() {
   // (and force another paid AI call). Cleared automatically when not splitting.
   useEffect(() => {
     saveSession(state);
-  }, [state.step, state.items, state.total, state.discount, state.assignments, state.receiptImage]);
+  }, [state.step, state.items, state.total, state.discount, state.assignments, state.receiptImage, state.manualTotalOverride]);
 
   // Toast timeout
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function App() {
   }, [showToast]);
 
   // Calculate stats derived from state
-  const stats = useMemo(() => computeStats(state), [state.items, state.total, state.discount, state.assignments, state.people]);
+  const stats = useMemo(() => computeStats(state), [state.items, state.total, state.discount, state.assignments, state.people, state.manualEntry, state.manualTotalOverride]);
   const { personTotals, effectiveTotal, unassignedTotal } = stats;
 
   const handleImageSelected = async (base64: string) => {
@@ -102,6 +102,7 @@ export default function App() {
         discount: 0,
         assignments: {}, // Reset assignments
         manualEntry: false,
+        manualTotalOverride: null,
       }));
     } catch (err: any) {
       setState(prev => ({
@@ -126,6 +127,7 @@ export default function App() {
       assignments: {},
       error: null,
       manualEntry: true,
+      manualTotalOverride: null,
     }));
     setIsEditingItems(true);
   };
@@ -252,6 +254,7 @@ export default function App() {
       assignments: {},
       error: null,
       manualEntry: false,
+      manualTotalOverride: null,
     }));
     setEditingTotal({ active: false, value: 0 });
     setEditingDiscount({ active: false, value: 0 });
@@ -307,12 +310,26 @@ export default function App() {
     clearPeople();
   };
 
-  // Total / discount editing handlers
-  const openTotalEdit = () => setEditingTotal({ active: true, value: state.total });
+  // Total / discount editing handlers. In manual entry the editable figure is
+  // the override (prefilled from the current items sum when none is set yet);
+  // for a scanned receipt it's the scanned total.
+  const openTotalEdit = () => setEditingTotal({
+    active: true,
+    value: state.manualEntry ? (state.manualTotalOverride ?? stats.itemsTotalSum) : state.total,
+  });
   const openDiscountEdit = () => setEditingDiscount({ active: true, value: state.discount });
 
   const applyTotalEdit = () => {
-    setState(prev => ({ ...prev, total: Math.max(0, editingTotal.value) }));
+    setState(prev => prev.manualEntry
+      ? { ...prev, manualTotalOverride: Math.max(0, editingTotal.value) }
+      : { ...prev, total: Math.max(0, editingTotal.value) });
+    setEditingTotal({ active: false, value: 0 });
+  };
+
+  // Manual entry only: drop the pinned total and go back to tracking the items
+  // sum automatically.
+  const clearTotalOverride = () => {
+    setState(prev => ({ ...prev, manualTotalOverride: null }));
     setEditingTotal({ active: false, value: 0 });
   };
 
@@ -520,6 +537,7 @@ export default function App() {
             onChangeTotalEdit={(value) => setEditingTotal(prev => ({ ...prev, value }))}
             onApplyTotalEdit={applyTotalEdit}
             onCancelTotalEdit={cancelTotalEdit}
+            onClearTotalOverride={clearTotalOverride}
             editingDiscount={editingDiscount}
             onOpenDiscountEdit={openDiscountEdit}
             onChangeDiscountEdit={(value) => setEditingDiscount(prev => ({ ...prev, value }))}
