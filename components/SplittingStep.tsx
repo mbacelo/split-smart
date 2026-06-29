@@ -1,12 +1,14 @@
-import React from 'react';
-import { AppState, Person } from '../types';
+import React, { useRef } from 'react';
+import { AppState, Person, ReceiptItem } from '../types';
 import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses } from './personColors';
 import { PersonCard } from './PersonCard';
-import { CheckIcon, PlusIcon, XIcon, SettingsIcon as EditIcon, ShareIcon } from './Icons';
+import { CheckIcon, PlusIcon, XIcon, TrashIcon, SettingsIcon as EditIcon, ShareIcon } from './Icons';
 
 interface EditState { active: boolean; value: number; }
+
+type ItemPatch = Partial<Pick<ReceiptItem, 'name' | 'quantity' | 'originalPrice'>>;
 
 interface SplittingStepProps {
   state: AppState;
@@ -16,6 +18,12 @@ interface SplittingStepProps {
   onToggleAssignment: (itemId: string) => void;
   onSelectPerson: (personId: string) => void;
   onShare: () => void;
+  // Item editing
+  isEditingItems: boolean;
+  onToggleEditItems: () => void;
+  onUpdateItem: (id: string, patch: ItemPatch) => void;
+  onAddItem: () => void;
+  onDeleteItem: (id: string) => void;
   // Total editing
   editingTotal: EditState;
   onOpenTotalEdit: () => void;
@@ -38,6 +46,11 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   onToggleAssignment,
   onSelectPerson,
   onShare,
+  isEditingItems,
+  onToggleEditItems,
+  onUpdateItem,
+  onAddItem,
+  onDeleteItem,
   editingTotal,
   onOpenTotalEdit,
   onChangeTotalEdit,
@@ -63,6 +76,19 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   const getPersonColorClass = (personId: string) => {
     const person = state.people.find((p) => p.id === personId);
     return person ? getColorClasses(person.color).bgSolid : 'bg-slate-400';
+  };
+
+  // Track the name input of each edit row so a freshly-added item can autofocus.
+  const nameInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const handleAddItem = () => {
+    const idsBefore = new Set(state.items.map((i) => i.id));
+    onAddItem();
+    // The new row renders on the next tick; focus the input we haven't seen yet.
+    setTimeout(() => {
+      for (const [id, el] of nameInputRefs.current) {
+        if (!idsBefore.has(id)) { el.focus(); break; }
+      }
+    }, 0);
   };
 
   return (
@@ -92,12 +118,21 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         <div className="lg:col-span-7 space-y-6 pb-40 lg:pb-0">
 
           <div className="bg-white lg:rounded-2xl shadow-sm border-y lg:border border-slate-200 overflow-hidden">
+            {/* Desktop header: title + subtotal + edit toggle */}
             <div className="hidden lg:flex px-6 py-4 border-b border-slate-100 bg-slate-50 justify-between items-center">
-              <h3 className="font-semibold text-slate-700">Receipt Items</h3>
+              <div className="flex items-center gap-3">
+                <h3 className="font-semibold text-slate-700">Receipt Items</h3>
+                <EditToggle active={isEditingItems} onClick={onToggleEditItems} />
+              </div>
               <div className="flex flex-col items-end">
-                <div className="text-sm text-slate-500 flex items-center gap-2">
+                <button
+                  onClick={onOpenTotalEdit}
+                  className="text-sm text-slate-500 flex items-center gap-2 hover:text-indigo-600 transition-colors group"
+                  title="Tap to correct the total"
+                >
                   Subtotal: <span className="font-bold text-slate-900">{formatCurrency(state.total)}</span>
-                </div>
+                  <EditIcon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
                 {state.discount > 0 && (
                   <div className="text-xs text-red-500 font-medium">
                     Discount: -{state.discount}% ({formatCurrency(discountAmount)})
@@ -106,7 +141,32 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
               </div>
             </div>
 
-            {state.items.length === 0 ? (
+            {/* Mobile header: title + edit toggle (the desktop one is hidden) */}
+            <div className="lg:hidden flex px-4 py-3 border-b border-slate-100 bg-slate-50 justify-between items-center">
+              <h3 className="font-semibold text-slate-700 text-sm">Receipt Items</h3>
+              <EditToggle active={isEditingItems} onClick={onToggleEditItems} />
+            </div>
+
+            {isEditingItems ? (
+              <div className="p-3 sm:p-4 space-y-3 animate-fade-in">
+                {state.items.map((item) => (
+                  <ItemEditRow
+                    key={item.id}
+                    item={item}
+                    onUpdate={onUpdateItem}
+                    onDelete={onDeleteItem}
+                    nameInputRefs={nameInputRefs}
+                  />
+                ))}
+                <button
+                  onClick={handleAddItem}
+                  className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
+                >
+                  <PlusIcon className="w-4 h-4" />
+                  <span>Add item</span>
+                </button>
+              </div>
+            ) : state.items.length === 0 ? (
               <div className="p-8 text-center text-slate-500">No items found.</div>
             ) : (
               <div className="divide-y divide-slate-100">
@@ -183,15 +243,19 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-4 lg:px-0">
-            {/* Total Adjustment Section */}
+            {/* Total Adjustment Section — shows the current total and is tappable
+                to correct it inline (mirrors the Discount card's value pattern). */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-[64px] justify-center">
               {!editingTotal.active ? (
                 <button
                   onClick={onOpenTotalEdit}
-                  className="w-full h-full p-4 flex items-center justify-center gap-2 text-indigo-600 font-semibold hover:bg-indigo-50 transition-colors"
+                  className="w-full h-full p-4 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors"
                 >
-                  <EditIcon className="w-4 h-4" />
-                  <span>Correct Total</span>
+                  <div className="flex items-center gap-1.5 text-slate-700 font-bold text-sm">
+                    <span className="text-slate-400 font-medium">Receipt Total:</span>
+                    <span>{formatCurrency(state.total)}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Tap to correct</span>
                 </button>
               ) : (
                 <div className="p-3 animate-fade-in flex items-center gap-2">
@@ -318,10 +382,17 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             </div>
 
             <div className="mt-6 pt-6 border-t border-slate-200 space-y-2">
-              <div className="flex justify-between items-center text-sm text-slate-500">
-                <span>Receipt Total</span>
-                <span>{formatCurrency(state.total)}</span>
-              </div>
+              <button
+                onClick={onOpenTotalEdit}
+                className="w-full flex justify-between items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors group"
+                title="Tap to correct the total"
+              >
+                <span className="flex items-center gap-1.5">
+                  Receipt Total
+                  <EditIcon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </span>
+                <span className="font-medium">{formatCurrency(state.total)}</span>
+              </button>
               {state.discount > 0 && (
                 <div className="flex justify-between items-center text-sm text-red-500 font-medium">
                   <span>Extra Discount ({state.discount}%)</span>
@@ -388,5 +459,92 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         </div>
       </div>
     </>
+  );
+};
+
+// Edit-mode toggle shown above the item list. Because edits apply live, this is
+// a mode switch, not a commit action — so both states share one pill shape/size
+// and differ only by fill + weight (ghost when off, filled indigo when on),
+// rather than morphing into a different-looking "confirm" button.
+const EditToggle: React.FC<{ active: boolean; onClick: () => void }> = ({ active, onClick }) => (
+  <button
+    onClick={onClick}
+    aria-pressed={active}
+    className={`flex items-center gap-1.5 text-xs font-bold rounded-full px-2.5 py-1 transition-colors active:scale-95
+      ${active
+        ? 'text-white bg-indigo-600 hover:bg-indigo-700'
+        : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'}`}
+  >
+    {active ? <CheckIcon className="w-3.5 h-3.5" /> : <EditIcon className="w-3.5 h-3.5" />}
+    <span>{active ? 'Done' : 'Edit items'}</span>
+  </button>
+);
+
+// A single editable item row: quantity, name, price, delete. Edits are applied
+// live via onUpdate; there is no per-row apply/cancel.
+const ItemEditRow: React.FC<{
+  item: ReceiptItem;
+  onUpdate: (id: string, patch: ItemPatch) => void;
+  onDelete: (id: string) => void;
+  nameInputRefs: React.MutableRefObject<Map<string, HTMLInputElement>>;
+}> = ({ item, onUpdate, onDelete, nameInputRefs }) => {
+  const isNameEmpty = item.name.trim().length === 0;
+  const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+  };
+
+  return (
+    <div className="flex items-center gap-2 group">
+      {/* Quantity */}
+      <input
+        type="number"
+        min="1"
+        step="1"
+        aria-label="Quantity"
+        value={item.quantity || ''}
+        onChange={(e) => onUpdate(item.id, { quantity: parseInt(e.target.value, 10) || 1 })}
+        onKeyDown={blurOnEnter}
+        className="w-12 shrink-0 text-center bg-slate-50 border border-slate-300 rounded-lg py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-bold text-slate-700 shadow-sm"
+      />
+      {/* Name */}
+      <input
+        ref={(el) => {
+          if (el) nameInputRefs.current.set(item.id, el);
+          else nameInputRefs.current.delete(item.id);
+        }}
+        type="text"
+        aria-label="Item name"
+        value={item.name}
+        onChange={(e) => onUpdate(item.id, { name: e.target.value })}
+        onKeyDown={blurOnEnter}
+        placeholder="Item name"
+        className={`flex-1 min-w-0 bg-slate-50 border rounded-lg px-3 py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-slate-900 placeholder-slate-400 font-medium transition-all
+          ${isNameEmpty ? 'border-red-300 focus:ring-red-200' : 'border-slate-300 shadow-sm'}`}
+      />
+      {/* Price */}
+      <div className="relative w-24 shrink-0">
+        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          aria-label="Price"
+          placeholder="0.00"
+          value={item.originalPrice || ''}
+          onChange={(e) => onUpdate(item.id, { originalPrice: parseFloat(e.target.value) || 0 })}
+          onKeyDown={blurOnEnter}
+          className="w-full pl-5 pr-2 py-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-bold text-slate-900 shadow-sm"
+        />
+      </div>
+      {/* Delete */}
+      <button
+        onClick={() => onDelete(item.id)}
+        className="p-2 shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+        title="Remove item"
+        aria-label="Remove item"
+      >
+        <TrashIcon className="w-5 h-5" />
+      </button>
+    </div>
   );
 };

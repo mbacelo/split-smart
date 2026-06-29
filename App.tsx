@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { AppState, Person, AssignmentState } from './types';
+import { AppState, Person, AssignmentState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
 import { getUser, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
 import { ReceiptIcon, CheckIcon, SettingsIcon } from './components/Icons';
@@ -18,6 +18,9 @@ export default function App() {
   const [activePersonId, setActivePersonId] = useState<string | null>(state.people[0]?.id || null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
+  // Transient UI flag (not persisted): flips the item list between assign mode
+  // and edit mode where rows become editable name/qty/price fields.
+  const [isEditingItems, setIsEditingItems] = useState(false);
 
   // Auth: subscribe to sign-in state from the Google Identity wrapper.
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
@@ -121,6 +124,43 @@ export default function App() {
     });
   };
 
+  // Item editing. Edits are applied live to state.items, so they recompute
+  // totals (computeStats useMemo) and persist (saveSession) automatically.
+  // Note: quantity is display/summary only — originalPrice is already the line
+  // total per the AI prompt, so changing quantity does NOT change the price.
+  const updateItem = (id: string, patch: Partial<Pick<ReceiptItem, 'name' | 'quantity' | 'originalPrice'>>) => {
+    setState(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id !== id) return item;
+        const next = { ...item, ...patch };
+        // Normalize: quantity is a positive integer, price is non-negative.
+        if (patch.quantity !== undefined) next.quantity = Math.max(1, Math.round(patch.quantity || 1));
+        if (patch.originalPrice !== undefined) next.originalPrice = Math.max(0, patch.originalPrice || 0);
+        return next;
+      }),
+    }));
+  };
+
+  const addItem = () => {
+    setState(prev => ({
+      ...prev,
+      items: [...prev.items, { id: crypto.randomUUID(), name: '', quantity: 1, originalPrice: 0 }],
+    }));
+  };
+
+  const deleteItem = (id: string) => {
+    setState(prev => {
+      // Drop the item and any assignments referencing it so no orphan keys linger.
+      const { [id]: _removed, ...remainingAssignments } = prev.assignments;
+      return {
+        ...prev,
+        items: prev.items.filter(item => item.id !== id),
+        assignments: remainingAssignments,
+      };
+    });
+  };
+
   const handleReset = () => {
     if (window.confirm("Are you sure you want to start over?")) {
       setState(prev => ({
@@ -135,6 +175,7 @@ export default function App() {
       }));
       setEditingTotal({ active: false, value: 0 });
       setEditingDiscount({ active: false, value: 0 });
+      setIsEditingItems(false);
     }
   };
 
@@ -341,6 +382,11 @@ export default function App() {
             onToggleAssignment={toggleAssignment}
             onSelectPerson={setActivePersonId}
             onShare={handleShare}
+            isEditingItems={isEditingItems}
+            onToggleEditItems={() => setIsEditingItems(v => !v)}
+            onUpdateItem={updateItem}
+            onAddItem={addItem}
+            onDeleteItem={deleteItem}
             editingTotal={editingTotal}
             onOpenTotalEdit={openTotalEdit}
             onChangeTotalEdit={(value) => setEditingTotal(prev => ({ ...prev, value }))}
