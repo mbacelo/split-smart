@@ -3,9 +3,11 @@
 Upload a photo of a receipt; AI extracts the line items and total, and you split
 the cost among people. React + TypeScript + Vite PWA, deployed on Vercel.
 
-## Architecture
+## How it works
 
-The browser **never** talks to an AI provider and never holds the API key.
+The browser **never** talks to an AI provider and never holds the API key. The
+image is sent to a Vercel serverless function that holds `OPENAI_API_KEY`,
+verifies your Google sign-in, and calls the AI provider server-side.
 
 ```
 Browser (React PWA)
@@ -18,16 +20,9 @@ Browser (React PWA)
      OpenAI   (key stays server-side)
 ```
 
-### Swapping AI providers
-
-Providers live behind a small abstraction in [`lib/ai/`](lib/ai). Only **OpenAI**
-is implemented today. To add Gemini or Anthropic later:
-
-1. Add `lib/ai/providers/<name>.ts` implementing the `AIProvider` interface.
-2. Add a `case` for it in [`lib/ai/index.ts`](lib/ai/index.ts).
-3. Set `AI_PROVIDER=<name>` (and that provider's API key) in the environment.
-
-Nothing else in the app changes.
+> For the internals — the splitting math, state/persistence, the provider
+> abstraction, and conventions for working in the code — see
+> [CLAUDE.md](CLAUDE.md).
 
 ## Environment variables
 
@@ -57,16 +52,21 @@ Append their email to `ALLOWED_EMAILS` (comma-separated) and redeploy. No code c
 
 ## Run locally
 
-**Prerequisites:** Node.js, and the Vercel CLI (`npm i -g vercel`).
+**Prerequisites:** Node.js.
 
 ```bash
 npm install
 # Fill in .env.local (see above)
-vercel dev      # serves the frontend AND /api together on one port
+npm run dev      # serves the frontend AND /api together on http://localhost:3000
 ```
 
-> `npm run dev` (plain Vite) runs the UI but **not** the `/api` function, so
-> receipt analysis won't work. Use `vercel dev` for full local testing.
+`npm run dev` runs the real serverless handler in-process via a dev-only Vite
+plugin, so receipt analysis works without the Vercel CLI. If you'd rather run
+the full stack through the Vercel CLI instead (`npm i -g vercel`), use
+`npm start` (`vercel dev`).
+
+> `npm run preview` serves the production build but **not** `/api`, so receipt
+> analysis won't work under it.
 
 ## Deploy
 
