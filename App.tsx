@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
 import { getUser, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
-import { ReceiptIcon, CheckIcon, SettingsIcon, RotateCcwIcon } from './components/Icons';
+import { Receipt, Check, Settings, RotateCcw } from 'lucide-react';
 import { formatCurrency } from './utils/currency';
 import { SettingsModal } from './components/SettingsModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -12,7 +12,7 @@ import { AnalyzingStep } from './components/AnalyzingStep';
 import { SplittingStep } from './components/SplittingStep';
 import { computeStats } from './state/stats';
 import { createPerson } from './components/personColors';
-import { getInitialPeople, makeInitialState, savePeople, clearPeople, saveSession } from './state/session';
+import { getInitialPeople, makeInitialState, savePeople, clearPeople, saveSession, saveSessionImage } from './state/session';
 
 export default function App() {
   const [state, setState] = useState<AppState>(makeInitialState);
@@ -73,9 +73,17 @@ export default function App() {
 
   // Persist the in-progress split session so a refresh doesn't lose work
   // (and force another paid AI call). Cleared automatically when not splitting.
+  // The receiptImage is deliberately NOT in the deps: it can be several MB and
+  // changes only once per receipt, so it's written by its own effect below
+  // rather than re-serialized to localStorage on every assignment tap/keystroke.
   useEffect(() => {
     saveSession(state);
-  }, [state.step, state.items, state.total, state.discount, state.assignments, state.receiptImage, state.manualTotalOverride]);
+  }, [state.step, state.items, state.total, state.discount, state.assignments, state.manualTotalOverride]);
+
+  // Persist the receipt image separately, only when it actually changes.
+  useEffect(() => {
+    saveSessionImage(state.receiptImage);
+  }, [state.receiptImage]);
 
   // Toast timeout
   useEffect(() => {
@@ -401,7 +409,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center px-6 animate-fade-in">
         <div className="bg-indigo-600 p-3 rounded-2xl text-white mb-6">
-          <ReceiptIcon className="w-8 h-8" />
+          <Receipt className="w-8 h-8" />
         </div>
         <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 mb-2">
           SplitSmart
@@ -451,7 +459,7 @@ export default function App() {
       {showToast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] animate-slide-down">
           <div className="bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 text-sm font-semibold border border-white/10">
-            <CheckIcon className="w-4 h-4 text-green-400" />
+            <Check className="w-4 h-4 text-green-400" />
             {showToast}
           </div>
         </div>
@@ -462,7 +470,7 @@ export default function App() {
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <div className="bg-indigo-600 p-1.5 rounded-lg text-white">
-              <ReceiptIcon className="w-5 h-5" />
+              <Receipt className="w-5 h-5" />
             </div>
             <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
               SplitSmart
@@ -475,7 +483,7 @@ export default function App() {
                 className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-red-500 transition-colors mr-2"
                 title="Start over with a new receipt"
               >
-                <RotateCcwIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+                <RotateCcw className="w-5 h-5 sm:w-4 sm:h-4" />
                 <span className="hidden sm:inline">New Receipt</span>
               </button>
             )}
@@ -484,7 +492,7 @@ export default function App() {
               className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-full transition-colors"
               title="Settings"
             >
-              <SettingsIcon className="w-5 h-5" />
+              <Settings className="w-5 h-5" />
             </button>
             <button
               onClick={signOut}

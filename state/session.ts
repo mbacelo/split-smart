@@ -9,6 +9,10 @@ import { AppState, Person, AssignmentState, ReceiptItem } from '../types';
 
 const PEOPLE_KEY = 'splitSmart_people';
 const SESSION_KEY = 'splitSmart_session';
+// The receipt image lives under its own key so the frequently-rewritten session
+// payload (items/assignments) stays small and fast to serialize. It can be a
+// few MB, and only changes once per receipt.
+const IMAGE_KEY = 'splitSmart_sessionImage';
 
 // Bump when the persisted session shape changes so stale data is discarded
 // rather than rehydrated into an incompatible state.
@@ -21,9 +25,6 @@ interface PersistedSession {
   total: number;
   discount: number;
   assignments: AssignmentState;
-  // Downscaled JPEG data URL so a mid-split refresh can still show the receipt
-  // for cross-checking. May be absent if storage was full when it was saved.
-  receiptImage?: string | null;
   manualEntry?: boolean;
   manualTotalOverride?: number | null;
 }
@@ -65,9 +66,11 @@ const loadSession = (): PersistedSession | null => {
 export const makeInitialState = (): AppState => {
   const people = loadPeople();
   const session = loadSession();
+  // Only restore the image when we actually have a session to attach it to,
+  // otherwise a stale image could outlive its cleared session.
   return {
     step: session?.step ?? 'upload',
-    receiptImage: session?.receiptImage ?? null,
+    receiptImage: session ? loadSessionImage() : null,
     items: session?.items ?? [],
     total: session?.total ?? 0,
     discount: session?.discount ?? 0,
@@ -91,11 +94,12 @@ export const clearPeople = (): void => {
   } catch { /* non-fatal */ }
 };
 
-/** Persist (or clear) the in-progress split session. */
+/** Persist (or clear) the in-progress split session (everything but the image). */
 export const saveSession = (state: AppState): void => {
   try {
     if (state.step !== 'splitting') {
       localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(IMAGE_KEY);
       return;
     }
     const payload: PersistedSession = {
@@ -105,16 +109,28 @@ export const saveSession = (state: AppState): void => {
       total: state.total,
       discount: state.discount,
       assignments: state.assignments,
-      receiptImage: state.receiptImage,
       manualEntry: state.manualEntry,
       manualTotalOverride: state.manualTotalOverride,
     };
-    try {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
-    } catch {
-      // Likely a quota error from the image. Retry without it so the split
-      // work (items/assignments) still survives a refresh.
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, receiptImage: null }));
-    }
+    localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
   } catch { /* non-fatal */ }
+};
+
+// Downscaled JPEG data URL so a mid-split refresh can still show the receipt
+// for cross-checking. Best-effort: dropped silently if storage is full, since
+// the split work itself is persisted separately by saveSession.
+const loadSessionImage = (): string | null => {
+  try {
+    return localStorage.getItem(IMAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+
+/** Persist (or clear) just the receipt image, on its own key. */
+export const saveSessionImage = (image: string | null): void => {
+  try {
+    if (image) localStorage.setItem(IMAGE_KEY, image);
+    else localStorage.removeItem(IMAGE_KEY);
+  } catch { /* storage full — image is non-essential, drop it */ }
 };

@@ -10,6 +10,11 @@ const noiseKeywords = [
   'visa', 'mastercard', 'cash', 'change', 'balance', 'pst', 'gst', 'hst', 'vat'
 ];
 
+// Match keywords as whole words rather than substrings, so legitimate items
+// like "Cashew chicken" (contains "cash") or "Multipack" (contains "tip") are
+// not silently dropped — which would scale their cost onto the other items.
+const noisePattern = new RegExp(`\\b(${noiseKeywords.join('|')})\\b`, 'i');
+
 /**
  * Turns a provider's raw analysis into the app's ProcessedReceipt shape:
  * filters out noise lines and stamps each item with a stable id.
@@ -19,8 +24,7 @@ export const toProcessedReceipt = (data: ReceiptAnalysis): ProcessedReceipt => {
   const filteredItems = (data.items || [])
     .filter((item) => {
       if (!item.name || typeof item.price !== 'number') return false;
-      const lowName = item.name.toLowerCase();
-      return !noiseKeywords.some(keyword => lowName.includes(keyword));
+      return !noisePattern.test(item.name);
     })
     .map((item) => ({
       id: crypto.randomUUID(),

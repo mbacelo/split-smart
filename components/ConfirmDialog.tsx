@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { RotateCcwIcon } from './Icons';
+import { RotateCcw } from 'lucide-react';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -60,7 +60,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="p-6">
           <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-6 flex items-start gap-4">
             <div className="p-2 bg-white rounded-full border border-slate-200 text-slate-500 shrink-0 shadow-sm">
-              {icon ?? <RotateCcwIcon className="w-5 h-5" />}
+              {icon ?? <RotateCcw className="w-5 h-5" />}
             </div>
             <div>
               <h3 className="font-semibold text-slate-900 text-sm">{title}</h3>

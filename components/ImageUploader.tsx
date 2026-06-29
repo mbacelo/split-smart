@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { CameraIcon, UploadIcon, ReceiptIcon } from './Icons';
+import { Camera, Upload, Receipt } from 'lucide-react';
 import { downscaleImage } from '../utils/image';
 
 interface ImageUploaderProps {
@@ -117,7 +117,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected })
       <div className="flex flex-col items-center justify-center space-y-6">
         <div className="flex flex-col items-center">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-4 border border-indigo-100">
-            <ReceiptIcon className="w-8 h-8" />
+            <Receipt className="w-8 h-8" />
           </div>
           <h3 className="text-2xl font-bold text-slate-800 tracking-tight">Add a Receipt</h3>
           <p className="text-slate-500 mt-2 max-w-xs mx-auto text-sm sm:text-base leading-relaxed">
@@ -131,7 +131,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected })
             disabled={isProcessing}
             className="group flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-2xl transition-all active:scale-95 shadow-lg shadow-indigo-100 disabled:opacity-60 disabled:pointer-events-none"
           >
-            <CameraIcon className="w-6 h-6 transition-transform group-hover:scale-110" />
+            <Camera className="w-6 h-6 transition-transform group-hover:scale-110" />
             <span>Take Photo</span>
           </button>
           
@@ -140,7 +140,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected })
             disabled={isProcessing}
             className="group flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-slate-700 font-bold py-4 px-6 rounded-2xl transition-all active:scale-95 disabled:opacity-60 disabled:pointer-events-none"
           >
-            <UploadIcon className="w-6 h-6 transition-transform group-hover:-translate-y-1" />
+            <Upload className="w-6 h-6 transition-transform group-hover:-translate-y-1" />
             <span>Gallery</span>
           </button>
         </div>

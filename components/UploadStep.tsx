@@ -1,6 +1,6 @@
 import React from 'react';
 import { ImageUploader } from './ImageUploader';
-import { PlusIcon } from './Icons';
+import { Plus } from 'lucide-react';
 
 interface UploadStepProps {
   onImageSelected: (base64: string) => void;
@@ -24,7 +24,7 @@ export const UploadStep: React.FC<UploadStepProps> = ({ onImageSelected, onManua
       onClick={onManualEntry}
       className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-indigo-600 transition-colors"
     >
-      <PlusIcon className="w-4 h-4" />
+      <Plus className="w-4 h-4" />
       <span>No receipt? Enter items manually</span>
     </button>
   </div>

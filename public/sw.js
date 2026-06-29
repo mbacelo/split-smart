@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splitsmart-v13';
+const CACHE_NAME = 'splitsmart-v14';
 const urlsToCache = [
   './',
   './index.html',
@@ -30,8 +30,18 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Simple network-first approach to satisfy installability without complex offline logic
+  // Only handle navigations/static GETs. Never intercept API calls or non-GET
+  // requests (e.g. the POST to /api/analyze-receipt): caches.match on those
+  // resolves undefined, which would turn a transient network error into a hard
+  // failure. Let the browser handle them directly.
+  if (event.request.method !== 'GET' || event.request.url.includes('/api/')) return;
+
+  // Simple network-first approach to satisfy installability without complex
+  // offline logic. Fall back to cache only when the network fetch fails AND we
+  // actually have a cached copy.
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request).catch(async () =>
+      (await caches.match(event.request)) || Response.error()
+    )
   );
 });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Person } from '../types';
-import { UserIcon } from './Icons';
+import { User } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses } from './personColors';
 
@@ -31,7 +31,7 @@ export const PersonCard: React.FC<PersonCardProps> = ({
     >
       <div className="flex justify-between items-start w-full">
         <div className={`p-1.5 rounded-full ${c.bgSoft} ${c.text}`}>
-          <UserIcon className="w-5 h-5" />
+          <User className="w-5 h-5" />
         </div>
         {isSelected && (
           <span className={`text-[10px] font-bold uppercase tracking-wider ${c.text} bg-white px-2 py-0.5 rounded-full shadow-sm`}>

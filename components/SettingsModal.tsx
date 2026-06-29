@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Person } from '../types';
-import { XIcon, RotateCcwIcon, PlusIcon, TrashIcon } from './Icons';
+import { X, RotateCcw, Plus, Trash2 } from 'lucide-react';
 import { getColorClasses, createPerson } from './personColors';
 
 interface SettingsModalProps {
@@ -78,7 +78,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
             {showResetConfirm ? 'Reset Defaults' : 'Manage People'}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
-            <XIcon className="w-6 h-6" />
+            <X className="w-6 h-6" />
           </button>
         </div>
         
@@ -86,7 +86,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
           <div className="p-6 animate-fade-in overflow-y-auto">
             <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-6 flex items-start gap-4">
                 <div className="p-2 bg-white rounded-full border border-slate-200 text-slate-500 shrink-0 shadow-sm">
-                    <RotateCcwIcon className="w-5 h-5" />
+                    <RotateCcw className="w-5 h-5" />
                 </div>
                 <div>
                     <h3 className="font-semibold text-slate-900 text-sm">Restore default names?</h3>
@@ -142,7 +142,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
                           tabIndex={-1}
                           aria-label="Clear name"
                         >
-                          <XIcon className="w-4 h-4" />
+                          <X className="w-4 h-4" />
                         </button>
                       )}
                     </div>
@@ -152,7 +152,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
                         className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
                         title="Remove member"
                       >
-                        <TrashIcon className="w-5 h-5" />
+                        <Trash2 className="w-5 h-5" />
                       </button>
                     )}
                   </div>
@@ -163,7 +163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
                 onClick={handleAddPerson}
                 className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200 mt-2"
               >
-                <PlusIcon className="w-4 h-4" />
+                <Plus className="w-4 h-4" />
                 <span>Add Member</span>
               </button>
             </div>
@@ -173,7 +173,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
                     onClick={() => setShowResetConfirm(true)}
                     className="flex items-center space-x-2 text-sm text-slate-500 hover:text-indigo-600 transition-colors px-3 py-2 rounded-lg hover:bg-white"
                 >
-                    <RotateCcwIcon className="w-4 h-4" />
+                    <RotateCcw className="w-4 h-4" />
                     <span>Restore Default</span>
                 </button>
                 <button 

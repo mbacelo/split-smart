@@ -29,7 +29,10 @@ const listeners = new Set<() => void>();
 /** Decode a JWT payload without verifying (verification happens server-side). */
 function decode(token: string): (AuthUser & { exp: number }) | null {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    // JWTs are base64url-encoded (- _ instead of + /, padding stripped), but
+    // atob only handles standard base64 — translate before decoding.
+    const b64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(b64));
     return {
       email: payload.email,
       name: payload.name || payload.email,

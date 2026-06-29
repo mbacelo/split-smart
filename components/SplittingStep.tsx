@@ -4,7 +4,7 @@ import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses, defaultPersonName } from './personColors';
 import { PersonCard } from './PersonCard';
-import { CheckIcon, PlusIcon, XIcon, TrashIcon, SettingsIcon as EditIcon, ShareIcon, UsersIcon, ReceiptIcon, RotateCcwIcon } from './Icons';
+import { Check, Plus, X, Trash2, Pencil, Share, Users, Receipt, RotateCcw } from 'lucide-react';
 
 interface EditState { active: boolean; value: number; }
 
@@ -175,7 +175,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             <div className="flex items-center gap-1 mt-0.5">
               {totalOverridden && (
                 <button onClick={onClearTotalOverride} title="Back to items total" className="p-1 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors active:scale-90">
-                  <RotateCcwIcon className="w-4 h-4" />
+                  <RotateCcw className="w-4 h-4" />
                 </button>
               )}
               <div className="relative w-24">
@@ -195,10 +195,10 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 />
               </div>
               <button onClick={onApplyTotalEdit} title="Apply" className="p-1 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors active:scale-90">
-                <CheckIcon className="w-4 h-4" />
+                <Check className="w-4 h-4" />
               </button>
               <button onClick={onCancelTotalEdit} title="Cancel" className="p-1 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
-                <XIcon className="w-4 h-4" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           ) : (
@@ -211,7 +211,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded font-bold">-{state.discount}%</span>
               )}
               <span className="font-bold text-lg text-slate-900 leading-none">{formatCurrency(effectiveTotal)}</span>
-              <EditIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <Pencil className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
             </button>
           )}
         </div>
@@ -238,7 +238,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 <p className="text-sm font-semibold text-slate-700 group-hover:text-indigo-600 transition-colors">View receipt</p>
                 <p className="text-xs text-slate-400">Tap to check items &amp; prices</p>
               </div>
-              <ReceiptIcon className="w-4 h-4 text-slate-300 ml-auto mr-1 shrink-0" />
+              <Receipt className="w-4 h-4 text-slate-300 ml-auto mr-1 shrink-0" />
             </button>
           )}
 
@@ -272,14 +272,14 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     </div>
                     {totalOverridden && (
                       <button onClick={onClearTotalOverride} title="Back to items total" className="p-1.5 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors active:scale-90">
-                        <RotateCcwIcon className="w-4 h-4" />
+                        <RotateCcw className="w-4 h-4" />
                       </button>
                     )}
                     <button onClick={onApplyTotalEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
-                      <CheckIcon className="w-4 h-4" />
+                      <Check className="w-4 h-4" />
                     </button>
                     <button onClick={onCancelTotalEdit} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
-                      <XIcon className="w-4 h-4" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
@@ -290,7 +290,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                       title={manualEntry ? 'Tap to override the total' : 'Tap to correct the total'}
                     >
                       {baseTotalLabel}: <span className="font-bold text-slate-900">{formatCurrency(baseTotal)}</span>
-                      <EditIcon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <Pencil className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </button>
                     {manualEntry && !totalOverridden && (
                       <div className="text-[11px] text-slate-400">Auto from items — tap to override</div>
@@ -333,7 +333,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   onClick={handleAddItem}
                   className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
                 >
-                  <PlusIcon className="w-4 h-4" />
+                  <Plus className="w-4 h-4" />
                   <span>Add item</span>
                 </button>
               </div>
@@ -363,7 +363,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                                 : 'border-slate-200 text-transparent bg-white'
                               }
                           `}>
-                            <CheckIcon className="w-4 h-4" />
+                            <Check className="w-4 h-4" />
                           </div>
                           {item.quantity > 1 && (
                             <span className="shrink-0 text-xs font-bold text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
@@ -407,7 +407,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                               ? 'bg-indigo-600 text-white'
                               : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}
                         >
-                          <UsersIcon className="w-3 h-3" />
+                          <Users className="w-3 h-3" />
                           All
                         </button>
                       </div>
@@ -426,7 +426,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   onClick={onOpenDiscountEdit}
                   className="w-full h-full p-4 flex items-center justify-center gap-2 text-indigo-600 font-semibold hover:bg-indigo-50 transition-colors"
                 >
-                  <PlusIcon className="w-4 h-4" />
+                  <Plus className="w-4 h-4" />
                   <span>Add Discount</span>
                 </button>
               ) : !editingDiscount.active && state.discount > 0 ? (
@@ -435,7 +435,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   className="w-full h-full p-4 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center gap-1.5 text-indigo-600 font-bold text-sm">
-                    <PlusIcon className="w-3.5 h-3.5" />
+                    <Plus className="w-3.5 h-3.5" />
                     <span>Discount: {state.discount}%</span>
                   </div>
                   <span className="text-[10px] text-slate-400">Tap to edit</span>
@@ -461,10 +461,10 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   </div>
                   <div className="flex gap-1">
                     <button onClick={onApplyDiscountEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
-                      <CheckIcon className="w-4 h-4" />
+                      <Check className="w-4 h-4" />
                     </button>
                     <button onClick={onCancelDiscountEdit} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
-                      <XIcon className="w-4 h-4" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -530,7 +530,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 onClick={handleAddPerson}
                 className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
               >
-                <PlusIcon className="w-4 h-4" />
+                <Plus className="w-4 h-4" />
                 <span>Add person</span>
               </button>
             </div>
@@ -554,7 +554,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 onClick={onShare}
                 className="w-full mt-4 flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"
               >
-                <ShareIcon className="w-5 h-5" />
+                <Share className="w-5 h-5" />
                 <span>Share Summary</span>
               </button>
             </div>
@@ -573,7 +573,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             <EditToggle active={isEditingPeople} onClick={() => setIsEditingPeople(v => !v)} idleLabel="Edit" />
           </div>
           <button onClick={onShare} className="flex items-center gap-1.5 text-indigo-600 font-bold text-xs">
-            <ShareIcon className="w-3.5 h-3.5" />
+            <Share className="w-3.5 h-3.5" />
             Share Split
           </button>
         </div>
@@ -594,7 +594,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
               onClick={handleAddPerson}
               className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
             >
-              <PlusIcon className="w-4 h-4" />
+              <Plus className="w-4 h-4" />
               <span>Add person</span>
             </button>
           </div>
@@ -617,7 +617,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   {person.name.charAt(0)}
                   {isActive && (
                     <div className={`absolute -top-1 -right-1 w-4 h-4 ${pc.bgSolidStrong} rounded-full border-2 border-white flex items-center justify-center`}>
-                      <CheckIcon className="w-2.5 h-2.5 text-white" />
+                      <Check className="w-2.5 h-2.5 text-white" />
                     </div>
                   )}
                 </div>
@@ -638,7 +638,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             style={{ minWidth: '70px' }}
           >
             <div className="w-12 h-12 rounded-full flex items-center justify-center mb-1 border-2 border-dashed border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors">
-              <PlusIcon className="w-5 h-5" />
+              <Plus className="w-5 h-5" />
             </div>
             <span className="text-[11px] font-bold text-slate-500">Add</span>
           </button>
@@ -661,7 +661,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             title="Close"
             aria-label="Close receipt preview"
           >
-            <XIcon className="w-6 h-6" />
+            <X className="w-6 h-6" />
           </button>
           <img
             src={receiptImage}
@@ -688,7 +688,7 @@ const EditToggle: React.FC<{ active: boolean; onClick: () => void; idleLabel?: s
         ? 'text-white bg-indigo-600 hover:bg-indigo-700'
         : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'}`}
   >
-    {active ? <CheckIcon className="w-3.5 h-3.5" /> : <EditIcon className="w-3.5 h-3.5" />}
+    {active ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
     <span>{active ? 'Done' : idleLabel}</span>
   </button>
 );
@@ -733,7 +733,7 @@ const PersonEditRow: React.FC<{
           title="Remove person"
           aria-label="Remove person"
         >
-          <TrashIcon className="w-5 h-5" />
+          <Trash2 className="w-5 h-5" />
         </button>
       )}
     </div>
@@ -747,7 +747,7 @@ const CancelEditButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     onClick={onClick}
     className="flex items-center gap-1.5 text-xs font-bold rounded-full px-2.5 py-1 text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-95"
   >
-    <XIcon className="w-3.5 h-3.5" />
+    <X className="w-3.5 h-3.5" />
     <span>Cancel</span>
   </button>
 );
@@ -825,7 +825,7 @@ const ItemEditRow: React.FC<{
         title="Remove item"
         aria-label="Remove item"
       >
-        <TrashIcon className="w-5 h-5" />
+        <Trash2 className="w-5 h-5" />
       </button>
     </div>
   );
