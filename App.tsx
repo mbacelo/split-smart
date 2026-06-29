@@ -11,6 +11,7 @@ import { UploadStep } from './components/UploadStep';
 import { AnalyzingStep } from './components/AnalyzingStep';
 import { SplittingStep } from './components/SplittingStep';
 import { computeStats } from './state/stats';
+import { createPerson } from './components/personColors';
 import { getInitialPeople, makeInitialState, savePeople, clearPeople, saveSession } from './state/session';
 
 export default function App() {
@@ -274,6 +275,17 @@ export default function App() {
     savePeople(newPeople);
   };
 
+  // Quick-add a participant from the splitting view (no modal): append an
+  // auto-named, auto-colored person, persist, and select them so the next item
+  // tap assigns to them immediately.
+  const handleAddPerson = () => {
+    const newPerson = createPerson(state.people);
+    const newPeople = [...state.people, newPerson];
+    setState(prev => ({ ...prev, people: newPeople }));
+    savePeople(newPeople);
+    setActivePersonId(newPerson.id);
+  };
+
   const handleResetPeople = () => {
     const defaultPeople = getInitialPeople();
     setState(prev => ({ ...prev, people: defaultPeople, assignments: {} }));
@@ -478,6 +490,7 @@ export default function App() {
             onToggleAssignment={toggleAssignment}
             onToggleAllAssignment={toggleAllAssignment}
             onSelectPerson={setActivePersonId}
+            onAddPerson={handleAddPerson}
             onShare={handleShare}
             isEditingItems={isEditingItems}
             onToggleEditItems={toggleEditItems}

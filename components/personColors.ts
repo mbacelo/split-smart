@@ -5,7 +5,13 @@
 // build-time purge and the class would be dropped. Listing the full class strings
 // here (and in tailwind.config.js `safelist`) keeps them in the build and makes the
 // exact classes greppable. Both lists are driven by the same palette in
-// SettingsModal's COLOR_PALETTE — keep them in sync if you add a color.
+// COLOR_PALETTE below — keep them in sync if you add a color.
+
+import { Person } from '../types';
+
+// The colors assigned to people, in the order they're handed out. Adding people
+// past the end of this list cycles back to the start.
+export const COLOR_PALETTE = ['blue', 'green', 'purple', 'orange', 'pink', 'indigo', 'rose', 'amber', 'emerald', 'cyan'];
 
 export interface PersonColorClasses {
   ringSelected: string; // selected card ring
@@ -38,3 +44,26 @@ const FALLBACK = COLOR_CLASSES.blue;
 
 export const getColorClasses = (color: string): PersonColorClasses =>
   COLOR_CLASSES[color] ?? FALLBACK;
+
+// Pick a color for a new person: the first palette color not already in use,
+// falling back to cycling the palette once every color is taken.
+export const nextPersonColor = (existing: Person[]): string => {
+  const used = existing.map(p => p.color);
+  const available = COLOR_PALETTE.filter(c => !used.includes(c));
+  return available.length > 0 ? available[0] : COLOR_PALETTE[existing.length % COLOR_PALETTE.length];
+};
+
+// Build a new person with a unique id and an unused color. `name` defaults to
+// `Person #N` (one past the highest existing default-style number) so quick-add
+// produces an immediately-usable participant; callers wanting the user to type
+// a name (e.g. the settings modal) pass an empty string.
+export const createPerson = (existing: Person[], name?: string): Person => {
+  if (name === undefined) {
+    const highest = existing.reduce((max, p) => {
+      const match = /^Person #(\d+)$/.exec(p.name.trim());
+      return match ? Math.max(max, parseInt(match[1], 10)) : max;
+    }, 0);
+    name = `Person #${Math.max(highest + 1, existing.length + 1)}`;
+  }
+  return { id: `p${Date.now()}`, name, color: nextPersonColor(existing) };
+};

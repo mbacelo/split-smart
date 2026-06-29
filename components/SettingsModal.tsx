@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Person } from '../types';
 import { XIcon, RotateCcwIcon, PlusIcon, TrashIcon } from './Icons';
-import { getColorClasses } from './personColors';
+import { getColorClasses, createPerson } from './personColors';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -12,8 +12,6 @@ interface SettingsModalProps {
   onSave: (people: Person[]) => void;
   onReset: () => void;
 }
-
-const COLOR_PALETTE = ['blue', 'green', 'purple', 'orange', 'pink', 'indigo', 'rose', 'amber', 'emerald', 'cyan'];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, people, initialPeople, onSave, onReset }) => {
   const [editedPeople, setEditedPeople] = useState<Person[]>(people);
@@ -32,21 +30,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
   };
 
   const handleAddPerson = () => {
-    const nextId = `p${Date.now()}`;
-    const usedColors = editedPeople.map(p => p.color);
-    const availableColors = COLOR_PALETTE.filter(c => !usedColors.includes(c));
-    const nextColor = availableColors.length > 0 ? availableColors[0] : COLOR_PALETTE[editedPeople.length % COLOR_PALETTE.length];
-    
-    const newPerson: Person = {
-      id: nextId,
-      name: ``,
-      color: nextColor
-    };
+    // Empty name here: in the modal the user types the name themselves (unlike
+    // the splitting view's quick-add, which auto-names for speed).
+    const newPerson = createPerson(editedPeople, '');
     setEditedPeople(prev => [...prev, newPerson]);
-    
+
     // Use a short timeout to ensure the element is rendered before focusing
     setTimeout(() => {
-      inputRefs.current.get(nextId)?.focus();
+      inputRefs.current.get(newPerson.id)?.focus();
     }, 0);
   };
 
@@ -97,7 +88,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
                 <div>
                     <h3 className="font-semibold text-slate-900 text-sm">Restore default names?</h3>
                     <p className="text-slate-500 text-sm mt-1 leading-relaxed">
-                        This will replace your current list with the original names (Person #1 to #5). Current changes will be discarded.
+                        This will replace your current list with the original two people (Person #1 and #2). Current changes will be discarded.
                     </p>
                 </div>
             </div>

@@ -22,6 +22,7 @@ interface SplittingStepProps {
   onToggleAssignment: (itemId: string) => void;
   onToggleAllAssignment: (itemId: string) => void;
   onSelectPerson: (personId: string) => void;
+  onAddPerson: () => void;
   onShare: () => void;
   // Item editing
   isEditingItems: boolean;
@@ -54,6 +55,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   onToggleAssignment,
   onToggleAllAssignment,
   onSelectPerson,
+  onAddPerson,
   onShare,
   isEditingItems,
   onToggleEditItems,
@@ -461,6 +463,13 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   />
                 );
               })}
+              <button
+                onClick={onAddPerson}
+                className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
+              >
+                <PlusIcon className="w-4 h-4" />
+                <span>Add person</span>
+              </button>
             </div>
 
             <div className="mt-6 pt-6 border-t border-slate-200 space-y-2">
@@ -531,6 +540,18 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
               </button>
             );
           })}
+          <button
+            onClick={onAddPerson}
+            title="Add person"
+            aria-label="Add person"
+            className="flex flex-col items-center flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+            style={{ minWidth: '70px' }}
+          >
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mb-1 border-2 border-dashed border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors">
+              <PlusIcon className="w-5 h-5" />
+            </div>
+            <span className="text-[11px] font-bold text-slate-500">Add</span>
+          </button>
         </div>
       </div>
 
