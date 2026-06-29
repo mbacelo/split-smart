@@ -12,7 +12,7 @@ const SESSION_KEY = 'splitSmart_session';
 
 // Bump when the persisted session shape changes so stale data is discarded
 // rather than rehydrated into an incompatible state.
-const SESSION_VERSION = 2;
+const SESSION_VERSION = 3;
 
 interface PersistedSession {
   v: number;
@@ -24,6 +24,7 @@ interface PersistedSession {
   // Downscaled JPEG data URL so a mid-split refresh can still show the receipt
   // for cross-checking. May be absent if storage was full when it was saved.
   receiptImage?: string | null;
+  manualEntry?: boolean;
 }
 
 export const getInitialPeople = (): Person[] => [
@@ -73,6 +74,7 @@ export const makeInitialState = (): AppState => {
     assignments: session?.assignments ?? {},
     people,
     error: null,
+    manualEntry: session?.manualEntry ?? false,
   };
 };
 
@@ -103,6 +105,7 @@ export const saveSession = (state: AppState): void => {
       discount: state.discount,
       assignments: state.assignments,
       receiptImage: state.receiptImage,
+      manualEntry: state.manualEntry,
     };
     try {
       localStorage.setItem(SESSION_KEY, JSON.stringify(payload));

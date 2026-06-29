@@ -39,8 +39,12 @@ const splitCents = (cents: number, n: number): number[] => {
 
 export const computeStats = (state: AppState): SplitStats => {
   const itemsSum = state.items.reduce((sum, item) => sum + item.originalPrice, 0);
-  const discountAmount = (state.total * state.discount) / 100;
-  const effectiveTotal = Math.max(0, state.total - discountAmount);
+  // In manual entry there is no scanned receipt total — the base total is just
+  // the sum of the items the user typed. (Scanned receipts keep their own total
+  // so items can be scaled to absorb tax/tip; manual items need no scaling.)
+  const baseTotal = state.manualEntry ? itemsSum : state.total;
+  const discountAmount = (baseTotal * state.discount) / 100;
+  const effectiveTotal = Math.max(0, baseTotal - discountAmount);
   const adjustmentFactor = itemsSum > 0 ? effectiveTotal / itemsSum : 1;
 
   const totalCents: Record<string, number> = {};

@@ -31,4 +31,8 @@ export interface AppState {
   assignments: AssignmentState;
   people: Person[];
   error: string | null;
+  // Manual entry mode: no receipt was scanned, so there is no authoritative
+  // receipt total to scale items against — the total is simply the sum of the
+  // items the user types in. See computeStats for how this changes the math.
+  manualEntry: boolean;
 }

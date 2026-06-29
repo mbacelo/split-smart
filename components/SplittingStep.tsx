@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Person, ReceiptItem } from '../types';
 import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
@@ -13,6 +13,9 @@ type ItemPatch = Partial<Pick<ReceiptItem, 'name' | 'quantity' | 'originalPrice'
 interface SplittingStepProps {
   state: AppState;
   stats: SplitStats;
+  // Manual entry: total derives from the items, so the "edit total" affordances
+  // are hidden and the totals are labelled as the items' own sum.
+  manualEntry: boolean;
   receiptImage: string | null;
   activePersonId: string | null;
   activePerson: Person | undefined;
@@ -44,6 +47,7 @@ interface SplittingStepProps {
 export const SplittingStep: React.FC<SplittingStepProps> = ({
   state,
   stats,
+  manualEntry,
   receiptImage,
   activePersonId,
   activePerson,
@@ -88,6 +92,17 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
 
   // Track the name input of each edit row so a freshly-added item can autofocus.
   const nameInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
+  // Manual entry lands directly in edit mode — put the cursor in the first
+  // item's name field so the user can start typing without a click/tap.
+  useEffect(() => {
+    if (manualEntry && isEditingItems) {
+      const firstId = state.items[0]?.id;
+      if (firstId) nameInputRefs.current.get(firstId)?.focus();
+    }
+    // Mount-only: this is the initial focus when the splitting screen opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const handleAddItem = () => {
     const idsBefore = new Set(state.items.map((i) => i.id));
     onAddItem();
@@ -111,7 +126,14 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         </div>
         <div className="flex flex-col items-end">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Final Total</span>
-          {editingTotal.active ? (
+          {manualEntry ? (
+            <div className="flex items-center gap-1.5">
+              {state.discount > 0 && (
+                <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded font-bold">-{state.discount}%</span>
+              )}
+              <span className="font-bold text-lg text-slate-900 leading-none">{formatCurrency(effectiveTotal)}</span>
+            </div>
+          ) : editingTotal.active ? (
             <div className="flex items-center gap-1 mt-0.5">
               <div className="relative w-24">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
@@ -181,12 +203,16 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             {/* Desktop header: title + subtotal + edit toggle */}
             <div className="hidden lg:flex px-6 py-4 border-b border-slate-100 bg-slate-50 justify-between items-center">
               <div className="flex items-center gap-3">
-                <h3 className="font-semibold text-slate-700">Receipt Items</h3>
+                <h3 className="font-semibold text-slate-700">{manualEntry ? 'Items' : 'Receipt Items'}</h3>
                 <EditToggle active={isEditingItems} onClick={onToggleEditItems} />
                 {isEditingItems && <CancelEditButton onClick={onCancelEditItems} />}
               </div>
               <div className="flex flex-col items-end">
-                {editingTotal.active ? (
+                {manualEntry ? (
+                  <div className="text-sm text-slate-500">
+                    Items Total: <span className="font-bold text-slate-900">{formatCurrency(itemsTotalSum)}</span>
+                  </div>
+                ) : editingTotal.active ? (
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm text-slate-500">Receipt Total:</span>
                     <div className="relative w-28">
@@ -234,7 +260,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
 
             {/* Mobile header: title + edit toggle (the desktop one is hidden) */}
             <div className="lg:hidden flex px-4 py-3 border-b border-slate-100 bg-slate-50 justify-between items-center">
-              <h3 className="font-semibold text-slate-700 text-sm">Receipt Items</h3>
+              <h3 className="font-semibold text-slate-700 text-sm">{manualEntry ? 'Items' : 'Receipt Items'}</h3>
               <div className="flex items-center gap-2">
                 {isEditingItems && <CancelEditButton onClick={onCancelEditItems} />}
                 <EditToggle active={isEditingItems} onClick={onToggleEditItems} />
@@ -250,6 +276,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     onUpdate={onUpdateItem}
                     onDelete={onDeleteItem}
                     nameInputRefs={nameInputRefs}
+                    onAddRow={handleAddItem}
                   />
                 ))}
                 <button
@@ -317,7 +344,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                       <div className="text-right flex flex-col items-end gap-1.5">
                         <div>
                           <p className="font-semibold text-slate-900">{formatCurrency(item.adjustedPrice)}</p>
-                          {(itemsTotalSum !== state.total || state.discount > 0) && (
+                          {adjustmentFactor !== 1 && (
                             <p className="text-xs text-slate-400 line-through">{formatCurrency(item.originalPrice)}</p>
                           )}
                         </div>
@@ -396,7 +423,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
           </div>
 
           {/* Scaling logic summary */}
-          {adjustmentFactor !== 1 && (
+          {!manualEntry && adjustmentFactor !== 1 && (
             <div className="mx-4 lg:mx-0 bg-yellow-50 text-yellow-800 text-xs p-3 rounded-lg border border-yellow-200 flex gap-2">
               <span className="font-bold shrink-0">Scaling Logic:</span>
               <p>
@@ -438,8 +465,8 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
 
             <div className="mt-6 pt-6 border-t border-slate-200 space-y-2">
               <div className="w-full flex justify-between items-center text-sm text-slate-500">
-                <span>Receipt Total</span>
-                <span className="font-medium">{formatCurrency(state.total)}</span>
+                <span>{manualEntry ? 'Items Total' : 'Receipt Total'}</span>
+                <span className="font-medium">{formatCurrency(manualEntry ? itemsTotalSum : state.total)}</span>
               </div>
               {state.discount > 0 && (
                 <div className="flex justify-between items-center text-sm text-red-500 font-medium">
@@ -573,8 +600,12 @@ const ItemEditRow: React.FC<{
   onUpdate: (id: string, patch: ItemPatch) => void;
   onDelete: (id: string) => void;
   nameInputRefs: React.MutableRefObject<Map<string, HTMLInputElement>>;
-}> = ({ item, onUpdate, onDelete, nameInputRefs }) => {
+  // Enter in the price field commits the row and starts a fresh one — the fast
+  // path for typing in a list of items by hand.
+  onAddRow: () => void;
+}> = ({ item, onUpdate, onDelete, nameInputRefs, onAddRow }) => {
   const isNameEmpty = item.name.trim().length === 0;
+  const priceInputRef = useRef<HTMLInputElement>(null);
   const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
   };
@@ -592,7 +623,8 @@ const ItemEditRow: React.FC<{
         onKeyDown={blurOnEnter}
         className="w-12 shrink-0 text-center bg-slate-50 border border-slate-300 rounded-lg py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-bold text-slate-700 shadow-sm"
       />
-      {/* Name */}
+      {/* Name — Enter hops to the price field so a row can be filled in without
+          reaching for the mouse. */}
       <input
         ref={(el) => {
           if (el) nameInputRefs.current.set(item.id, el);
@@ -602,15 +634,18 @@ const ItemEditRow: React.FC<{
         aria-label="Item name"
         value={item.name}
         onChange={(e) => onUpdate(item.id, { name: e.target.value })}
-        onKeyDown={blurOnEnter}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); priceInputRef.current?.focus(); }
+        }}
         placeholder="Item name"
         className={`flex-1 min-w-0 bg-slate-50 border rounded-lg px-3 py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-slate-900 placeholder-slate-400 font-medium transition-all
           ${isNameEmpty ? 'border-red-300 focus:ring-red-200' : 'border-slate-300 shadow-sm'}`}
       />
-      {/* Price */}
+      {/* Price — Enter commits and opens the next row. */}
       <div className="relative w-24 shrink-0">
         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
         <input
+          ref={priceInputRef}
           type="number"
           min="0"
           step="0.01"
@@ -618,7 +653,9 @@ const ItemEditRow: React.FC<{
           placeholder="0.00"
           value={item.originalPrice || ''}
           onChange={(e) => onUpdate(item.id, { originalPrice: parseFloat(e.target.value) || 0 })}
-          onKeyDown={blurOnEnter}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); onAddRow(); }
+          }}
           className="w-full pl-5 pr-2 py-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-bold text-slate-900 shadow-sm"
         />
       </div>

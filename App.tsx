@@ -100,6 +100,7 @@ export default function App() {
         total: result.total,
         discount: 0,
         assignments: {}, // Reset assignments
+        manualEntry: false,
       }));
     } catch (err: any) {
       setState(prev => ({
@@ -108,6 +109,24 @@ export default function App() {
         error: err.message || "Something went wrong"
       }));
     }
+  };
+
+  // Skip the photo + AI step and start a blank split the user fills in by hand.
+  // Lands directly in edit mode with one empty row ready to type into, and flags
+  // manualEntry so the total tracks the sum of items instead of a scanned total.
+  const startManualEntry = () => {
+    setState(prev => ({
+      ...prev,
+      step: 'splitting',
+      receiptImage: null,
+      items: [{ id: crypto.randomUUID(), name: '', quantity: 1, originalPrice: 0 }],
+      total: 0,
+      discount: 0,
+      assignments: {},
+      error: null,
+      manualEntry: true,
+    }));
+    setIsEditingItems(true);
   };
 
   const toggleAssignment = (itemId: string) => {
@@ -186,14 +205,27 @@ export default function App() {
   // Enter edit mode (snapshotting current items/assignments so Cancel can revert)
   // or commit and leave (discarding the snapshot).
   const toggleEditItems = () => {
-    setIsEditingItems(prev => {
-      if (!prev) {
-        editSnapshot.current = { items: state.items, assignments: state.assignments };
-        return true;
-      }
+    if (isEditingItems) {
+      // Committing: drop rows the user added but left fully empty (no name and
+      // no price) — these are abandoned blanks, not real items — and clean up
+      // any assignments that referenced them. A row with just a name or just a
+      // price is kept, since that's a partially-entered item.
+      setState(prev => {
+        const kept = prev.items.filter(it => it.name.trim() !== '' || it.originalPrice > 0);
+        if (kept.length === prev.items.length) return prev;
+        const keptIds = new Set(kept.map(i => i.id));
+        const assignments: AssignmentState = {};
+        Object.entries(prev.assignments).forEach(([itemId, ids]) => {
+          if (keptIds.has(itemId)) assignments[itemId] = ids as string[];
+        });
+        return { ...prev, items: kept, assignments };
+      });
       editSnapshot.current = null;
-      return false;
-    });
+      setIsEditingItems(false);
+    } else {
+      editSnapshot.current = { items: state.items, assignments: state.assignments };
+      setIsEditingItems(true);
+    }
   };
 
   // Abandon edits: restore the snapshot taken when edit mode opened, then leave.
@@ -218,6 +250,7 @@ export default function App() {
       discount: 0,
       assignments: {},
       error: null,
+      manualEntry: false,
     }));
     setEditingTotal({ active: false, value: 0 });
     setEditingDiscount({ active: false, value: 0 });
@@ -430,7 +463,7 @@ export default function App() {
           </div>
         )}
 
-        {state.step === 'upload' && <UploadStep onImageSelected={handleImageSelected} />}
+        {state.step === 'upload' && <UploadStep onImageSelected={handleImageSelected} onManualEntry={startManualEntry} />}
 
         {state.step === 'analyzing' && <AnalyzingStep />}
 
@@ -438,6 +471,7 @@ export default function App() {
           <SplittingStep
             state={state}
             stats={stats}
+            manualEntry={state.manualEntry}
             receiptImage={state.receiptImage}
             activePersonId={activePersonId}
             activePerson={activePerson}
