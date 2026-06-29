@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Person, ReceiptItem } from '../types';
 import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
-import { getColorClasses } from './personColors';
+import { getColorClasses, defaultPersonName } from './personColors';
 import { PersonCard } from './PersonCard';
 import { CheckIcon, PlusIcon, XIcon, TrashIcon, SettingsIcon as EditIcon, ShareIcon, UsersIcon, ReceiptIcon } from './Icons';
 
@@ -23,6 +23,8 @@ interface SplittingStepProps {
   onToggleAllAssignment: (itemId: string) => void;
   onSelectPerson: (personId: string) => void;
   onAddPerson: () => void;
+  onRenamePerson: (personId: string, name: string) => void;
+  onRemovePerson: (personId: string) => void;
   onShare: () => void;
   // Item editing
   isEditingItems: boolean;
@@ -56,6 +58,8 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   onToggleAllAssignment,
   onSelectPerson,
   onAddPerson,
+  onRenamePerson,
+  onRemovePerson,
   onShare,
   isEditingItems,
   onToggleEditItems,
@@ -92,8 +96,37 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   // Full-screen receipt preview, for cross-checking the AI's reading.
   const [isReceiptZoomed, setIsReceiptZoomed] = useState(false);
 
+  // Toggles the People list between "tap to select for assigning" and an inline
+  // edit mode where each person becomes a name field with a remove button —
+  // putting rename/remove in reach without opening the settings modal.
+  const [isEditingPeople, setIsEditingPeople] = useState(false);
+
+  // When a name is left blank, backfill a default on blur so we never persist an
+  // empty participant (mirrors the settings modal's non-empty rule).
+  const handleNameBlur = (personId: string, name: string) => {
+    if (name.trim() === '') onRenamePerson(personId, defaultPersonName(state.people));
+  };
+
   // Track the name input of each edit row so a freshly-added item can autofocus.
   const nameInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
+  // Track each person's edit-row name input so a freshly-added person can grab
+  // focus with its default "Person #n" pre-selected for instant overwrite.
+  const personNameInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
+  // Adding a person only helps if you can name it: drop into edit mode, append,
+  // then focus the new row's field and select its default text so the user can
+  // type a name immediately without clearing it first.
+  const handleAddPerson = () => {
+    const idsBefore = new Set(state.people.map((p) => p.id));
+    setIsEditingPeople(true);
+    onAddPerson();
+    setTimeout(() => {
+      for (const [id, el] of personNameInputRefs.current) {
+        if (!idsBefore.has(id)) { el.focus(); el.select(); break; }
+      }
+    }, 0);
+  };
 
   // Manual entry lands directly in edit mode — put the cursor in the first
   // item's name field so the user can start typing without a click/tap.
@@ -441,7 +474,10 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         <div className="hidden lg:block lg:col-span-5 relative">
           <div className="sticky top-24 space-y-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-slate-700">People</h3>
+              <div className="flex items-center gap-3">
+                <h3 className="font-semibold text-slate-700">People</h3>
+                <EditToggle active={isEditingPeople} onClick={() => setIsEditingPeople(v => !v)} idleLabel="Edit" />
+              </div>
               <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
                 Remaining: <span className={unassignedTotal > 0.01 ? 'text-red-500' : 'text-green-600'}>
                   {formatCurrency(Math.max(0, unassignedTotal))}
@@ -450,21 +486,33 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             </div>
 
             <div className="space-y-3">
-              {state.people.map((person) => {
-                const itemCount = Object.values(state.assignments).filter((ids) => (ids as string[]).includes(person.id)).length;
-                return (
-                  <PersonCard
-                    key={person.id}
-                    person={person}
-                    isSelected={activePersonId === person.id}
-                    total={personTotals[person.id] || 0}
-                    onClick={() => onSelectPerson(person.id)}
-                    itemCount={itemCount}
-                  />
-                );
-              })}
+              {isEditingPeople
+                ? state.people.map((person) => (
+                    <PersonEditRow
+                      key={person.id}
+                      person={person}
+                      canRemove={state.people.length > 1}
+                      onRename={onRenamePerson}
+                      onBlurName={handleNameBlur}
+                      onRemove={onRemovePerson}
+                      inputRefs={personNameInputRefs}
+                    />
+                  ))
+                : state.people.map((person) => {
+                    const itemCount = Object.values(state.assignments).filter((ids) => (ids as string[]).includes(person.id)).length;
+                    return (
+                      <PersonCard
+                        key={person.id}
+                        person={person}
+                        isSelected={activePersonId === person.id}
+                        total={personTotals[person.id] || 0}
+                        onClick={() => onSelectPerson(person.id)}
+                        itemCount={itemCount}
+                      />
+                    );
+                  })}
               <button
-                onClick={onAddPerson}
+                onClick={handleAddPerson}
                 className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
               >
                 <PlusIcon className="w-4 h-4" />
@@ -503,12 +551,39 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
       {/* Mobile Bottom People Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_16px_rgba(0,0,0,0.1)] z-40 pb-safe animate-slide-up">
         <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 bg-slate-50/50">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select to assign</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {isEditingPeople ? 'Edit people' : 'Select to assign'}
+            </span>
+            <EditToggle active={isEditingPeople} onClick={() => setIsEditingPeople(v => !v)} idleLabel="Edit" />
+          </div>
           <button onClick={onShare} className="flex items-center gap-1.5 text-indigo-600 font-bold text-xs">
             <ShareIcon className="w-3.5 h-3.5" />
             Share Split
           </button>
         </div>
+        {isEditingPeople ? (
+          <div className="px-4 py-3 space-y-2 max-h-[45vh] overflow-y-auto">
+            {state.people.map((person) => (
+              <PersonEditRow
+                key={person.id}
+                person={person}
+                canRemove={state.people.length > 1}
+                onRename={onRenamePerson}
+                onBlurName={handleNameBlur}
+                onRemove={onRemovePerson}
+                inputRefs={personNameInputRefs}
+              />
+            ))}
+            <button
+              onClick={handleAddPerson}
+              className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
+            >
+              <PlusIcon className="w-4 h-4" />
+              <span>Add person</span>
+            </button>
+          </div>
+        ) : (
         <div className="flex overflow-x-auto px-4 py-3 gap-3 no-scrollbar items-center">
           {state.people.map((person) => {
             const isActive = person.id === activePersonId;
@@ -541,7 +616,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             );
           })}
           <button
-            onClick={onAddPerson}
+            onClick={handleAddPerson}
             title="Add person"
             aria-label="Add person"
             className="flex flex-col items-center flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
@@ -553,6 +628,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             <span className="text-[11px] font-bold text-slate-500">Add</span>
           </button>
         </div>
+        )}
       </div>
 
       {/* Full-screen receipt preview */}
@@ -588,7 +664,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
 // a mode switch, not a commit action — so both states share one pill shape/size
 // and differ only by fill + weight (ghost when off, filled indigo when on),
 // rather than morphing into a different-looking "confirm" button.
-const EditToggle: React.FC<{ active: boolean; onClick: () => void }> = ({ active, onClick }) => (
+const EditToggle: React.FC<{ active: boolean; onClick: () => void; idleLabel?: string }> = ({ active, onClick, idleLabel = 'Edit items' }) => (
   <button
     onClick={onClick}
     aria-pressed={active}
@@ -598,9 +674,56 @@ const EditToggle: React.FC<{ active: boolean; onClick: () => void }> = ({ active
         : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'}`}
   >
     {active ? <CheckIcon className="w-3.5 h-3.5" /> : <EditIcon className="w-3.5 h-3.5" />}
-    <span>{active ? 'Done' : 'Edit items'}</span>
+    <span>{active ? 'Done' : idleLabel}</span>
   </button>
 );
+
+// A single editable person row used in both the desktop column and the mobile
+// bar's edit mode: colored avatar initial, a live name field, and a remove
+// button (hidden when only one person remains). Mirrors the settings modal row.
+const PersonEditRow: React.FC<{
+  person: Person;
+  canRemove: boolean;
+  onRename: (id: string, name: string) => void;
+  onBlurName: (id: string, name: string) => void;
+  onRemove: (id: string) => void;
+  inputRefs: React.MutableRefObject<Map<string, HTMLInputElement>>;
+}> = ({ person, canRemove, onRename, onBlurName, onRemove, inputRefs }) => {
+  const c = getColorClasses(person.color);
+  const isNameEmpty = person.name.trim().length === 0;
+  return (
+    <div className="flex items-center gap-3 group">
+      <div className={`w-10 h-10 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-sm border ${c.borderSoft} shadow-sm`}>
+        {person.name.trim().charAt(0).toUpperCase() || '?'}
+      </div>
+      <input
+        type="text"
+        aria-label="Person name"
+        ref={(el) => {
+          if (el) inputRefs.current.set(person.id, el);
+          else inputRefs.current.delete(person.id);
+        }}
+        value={person.name}
+        onChange={(e) => onRename(person.id, e.target.value)}
+        onBlur={(e) => onBlurName(person.id, e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        placeholder="Enter name"
+        className={`flex-1 min-w-0 bg-slate-50 border rounded-lg px-3 py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-slate-900 placeholder-slate-400 font-medium transition-all
+          ${isNameEmpty ? 'border-red-300 focus:ring-red-200' : 'border-slate-300 shadow-sm'}`}
+      />
+      {canRemove && (
+        <button
+          onClick={() => onRemove(person.id)}
+          className="p-2 shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+          title="Remove person"
+          aria-label="Remove person"
+        >
+          <TrashIcon className="w-5 h-5" />
+        </button>
+      )}
+    </div>
+  );
+};
 
 // Discards in-progress edits and leaves edit mode. Styled as a ghost pill that
 // mirrors EditToggle's size so the two sit together cleanly.

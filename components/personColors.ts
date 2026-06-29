@@ -53,17 +53,19 @@ export const nextPersonColor = (existing: Person[]): string => {
   return available.length > 0 ? available[0] : COLOR_PALETTE[existing.length % COLOR_PALETTE.length];
 };
 
-// Build a new person with a unique id and an unused color. `name` defaults to
-// `Person #N` (one past the highest existing default-style number) so quick-add
-// produces an immediately-usable participant; callers wanting the user to type
-// a name (e.g. the settings modal) pass an empty string.
-export const createPerson = (existing: Person[], name?: string): Person => {
-  if (name === undefined) {
-    const highest = existing.reduce((max, p) => {
-      const match = /^Person #(\d+)$/.exec(p.name.trim());
-      return match ? Math.max(max, parseInt(match[1], 10)) : max;
-    }, 0);
-    name = `Person #${Math.max(highest + 1, existing.length + 1)}`;
-  }
-  return { id: `p${Date.now()}`, name, color: nextPersonColor(existing) };
+// A fresh `Person #N` name, one past the highest existing default-style number
+// (falling back to the list length). Used both for quick-add and to backfill a
+// name the user cleared while editing.
+export const defaultPersonName = (existing: Person[]): string => {
+  const highest = existing.reduce((max, p) => {
+    const match = /^Person #(\d+)$/.exec(p.name.trim());
+    return match ? Math.max(max, parseInt(match[1], 10)) : max;
+  }, 0);
+  return `Person #${Math.max(highest + 1, existing.length + 1)}`;
 };
+
+// Build a new person with a unique id and an unused color. `name` defaults to a
+// `defaultPersonName` so a freshly-added participant is immediately usable;
+// callers can pass an explicit name (or '' to force the user to type one).
+export const createPerson = (existing: Person[], name?: string): Person =>
+  ({ id: `p${Date.now()}`, name: name ?? defaultPersonName(existing), color: nextPersonColor(existing) });

@@ -286,6 +286,21 @@ export default function App() {
     setActivePersonId(newPerson.id);
   };
 
+  // Inline rename from the splitting view's "Edit" mode. Live as the user types;
+  // ids are unchanged so assignments are untouched.
+  const renamePerson = (id: string, name: string) => {
+    const people = state.people.map(p => (p.id === id ? { ...p, name } : p));
+    setState(prev => ({ ...prev, people }));
+    savePeople(people);
+  };
+
+  // Inline remove from the splitting view. Reuses handleSavePeople so the
+  // removed person's assignments are cleaned up. Always keep at least one person.
+  const removePerson = (id: string) => {
+    if (state.people.length <= 1) return;
+    handleSavePeople(state.people.filter(p => p.id !== id));
+  };
+
   const handleResetPeople = () => {
     const defaultPeople = getInitialPeople();
     setState(prev => ({ ...prev, people: defaultPeople, assignments: {} }));
@@ -491,6 +506,8 @@ export default function App() {
             onToggleAllAssignment={toggleAllAssignment}
             onSelectPerson={setActivePersonId}
             onAddPerson={handleAddPerson}
+            onRenamePerson={renamePerson}
+            onRemovePerson={removePerson}
             onShare={handleShare}
             isEditingItems={isEditingItems}
             onToggleEditItems={toggleEditItems}

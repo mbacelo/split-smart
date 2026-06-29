@@ -30,14 +30,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, p
   };
 
   const handleAddPerson = () => {
-    // Empty name here: in the modal the user types the name themselves (unlike
-    // the splitting view's quick-add, which auto-names for speed).
-    const newPerson = createPerson(editedPeople, '');
+    // Auto-name (Person #n) and pre-select the text on focus so the user can
+    // either keep the default or type right over it — matching the splitting
+    // view's quick-add.
+    const newPerson = createPerson(editedPeople);
     setEditedPeople(prev => [...prev, newPerson]);
 
     // Use a short timeout to ensure the element is rendered before focusing
     setTimeout(() => {
-      inputRefs.current.get(newPerson.id)?.focus();
+      const el = inputRefs.current.get(newPerson.id);
+      el?.focus();
+      el?.select();
     }, 0);
   };
 
