@@ -23,6 +23,7 @@ interface SplittingStepProps {
   // Item editing
   isEditingItems: boolean;
   onToggleEditItems: () => void;
+  onCancelEditItems: () => void;
   onUpdateItem: (id: string, patch: ItemPatch) => void;
   onAddItem: () => void;
   onDeleteItem: (id: string) => void;
@@ -52,6 +53,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   onShare,
   isEditingItems,
   onToggleEditItems,
+  onCancelEditItems,
   onUpdateItem,
   onAddItem,
   onDeleteItem,
@@ -72,7 +74,6 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
     effectiveTotal,
     discountAmount,
     unassignedTotal,
-    unassignedItemCount,
     itemsTotalSum,
     adjustmentFactor,
   } = stats;
@@ -110,12 +111,44 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         </div>
         <div className="flex flex-col items-end">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Final Total</span>
-          <div className="flex items-center gap-1.5">
-            {state.discount > 0 && (
-              <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded font-bold">-{state.discount}%</span>
-            )}
-            <span className="font-bold text-lg text-slate-900 leading-none">{formatCurrency(effectiveTotal)}</span>
-          </div>
+          {editingTotal.active ? (
+            <div className="flex items-center gap-1 mt-0.5">
+              <div className="relative w-24">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
+                <input
+                  type="number"
+                  autoFocus
+                  step="0.01"
+                  placeholder="0.00"
+                  value={editingTotal.value || ''}
+                  onChange={(e) => onChangeTotalEdit(parseFloat(e.target.value) || 0)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); onApplyTotalEdit(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); onCancelTotalEdit(); }
+                  }}
+                  className="w-full pl-5 pr-1 py-1 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-base text-right"
+                />
+              </div>
+              <button onClick={onApplyTotalEdit} title="Apply" className="p-1 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors active:scale-90">
+                <CheckIcon className="w-4 h-4" />
+              </button>
+              <button onClick={onCancelTotalEdit} title="Cancel" className="p-1 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
+                <XIcon className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onOpenTotalEdit}
+              className="flex items-center gap-1.5"
+              title="Tap to correct the total"
+            >
+              {state.discount > 0 && (
+                <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded font-bold">-{state.discount}%</span>
+              )}
+              <span className="font-bold text-lg text-slate-900 leading-none">{formatCurrency(effectiveTotal)}</span>
+              <EditIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -150,20 +183,51 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
               <div className="flex items-center gap-3">
                 <h3 className="font-semibold text-slate-700">Receipt Items</h3>
                 <EditToggle active={isEditingItems} onClick={onToggleEditItems} />
+                {isEditingItems && <CancelEditButton onClick={onCancelEditItems} />}
               </div>
               <div className="flex flex-col items-end">
-                <button
-                  onClick={onOpenTotalEdit}
-                  className="text-sm text-slate-500 flex items-center gap-2 hover:text-indigo-600 transition-colors group"
-                  title="Tap to correct the total"
-                >
-                  Receipt Total: <span className="font-bold text-slate-900">{formatCurrency(state.total)}</span>
-                  <EditIcon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </button>
-                {state.discount > 0 && (
-                  <div className="text-xs text-red-500 font-medium">
-                    Discount: -{state.discount}% ({formatCurrency(discountAmount)})
+                {editingTotal.active ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-slate-500">Receipt Total:</span>
+                    <div className="relative w-28">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
+                      <input
+                        type="number"
+                        autoFocus
+                        step="0.01"
+                        placeholder="0.00"
+                        value={editingTotal.value || ''}
+                        onChange={(e) => onChangeTotalEdit(parseFloat(e.target.value) || 0)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); onApplyTotalEdit(); }
+                          else if (e.key === 'Escape') { e.preventDefault(); onCancelTotalEdit(); }
+                        }}
+                        className="w-full pl-6 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm"
+                      />
+                    </div>
+                    <button onClick={onApplyTotalEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
+                      <CheckIcon className="w-4 h-4" />
+                    </button>
+                    <button onClick={onCancelTotalEdit} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
+                      <XIcon className="w-4 h-4" />
+                    </button>
                   </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={onOpenTotalEdit}
+                      className="text-sm text-slate-500 flex items-center gap-2 hover:text-indigo-600 transition-colors group"
+                      title="Tap to correct the total"
+                    >
+                      Receipt Total: <span className="font-bold text-slate-900">{formatCurrency(state.total)}</span>
+                      <EditIcon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                    {state.discount > 0 && (
+                      <div className="text-xs text-red-500 font-medium">
+                        Discount: -{state.discount}% ({formatCurrency(discountAmount)})
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -171,7 +235,10 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             {/* Mobile header: title + edit toggle (the desktop one is hidden) */}
             <div className="lg:hidden flex px-4 py-3 border-b border-slate-100 bg-slate-50 justify-between items-center">
               <h3 className="font-semibold text-slate-700 text-sm">Receipt Items</h3>
-              <EditToggle active={isEditingItems} onClick={onToggleEditItems} />
+              <div className="flex items-center gap-2">
+                {isEditingItems && <CancelEditButton onClick={onCancelEditItems} />}
+                <EditToggle active={isEditingItems} onClick={onToggleEditItems} />
+              </div>
             </div>
 
             {isEditingItems ? (
@@ -274,61 +341,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             )}
           </div>
 
-          {/* Unassigned items nudge */}
-          {unassignedItemCount > 0 && (
-            <div className="mx-4 lg:mx-0 bg-amber-50 text-amber-800 text-sm p-3 rounded-lg border border-amber-200 flex items-center gap-2">
-              <span className="font-bold shrink-0">
-                {unassignedItemCount} {unassignedItemCount === 1 ? 'item' : 'items'} unassigned
-              </span>
-              <span className="text-amber-700">— {formatCurrency(Math.max(0, unassignedTotal))} not yet split. Tap an item to assign it.</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-4 lg:px-0">
-            {/* Total Adjustment Section — shows the current total and is tappable
-                to correct it inline (mirrors the Discount card's value pattern). */}
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-[64px] justify-center">
-              {!editingTotal.active ? (
-                <button
-                  onClick={onOpenTotalEdit}
-                  className="w-full h-full p-4 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center gap-1.5 text-slate-700 font-bold text-sm">
-                    <span className="text-slate-400 font-medium">Receipt Total:</span>
-                    <span>{formatCurrency(state.total)}</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400">Tap to correct</span>
-                </button>
-              ) : (
-                <div className="p-3 animate-fade-in flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
-                    <input
-                      type="number"
-                      autoFocus
-                      step="0.01"
-                      placeholder="0.00"
-                      value={editingTotal.value || ''}
-                      onChange={(e) => onChangeTotalEdit(parseFloat(e.target.value) || 0)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); onApplyTotalEdit(); }
-                        else if (e.key === 'Escape') { e.preventDefault(); onCancelTotalEdit(); }
-                      }}
-                      className="w-full pl-6 pr-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-base"
-                    />
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={onApplyTotalEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
-                      <CheckIcon className="w-4 h-4" />
-                    </button>
-                    <button onClick={onCancelTotalEdit} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
-                      <XIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
+          <div className="px-4 lg:px-0">
             {/* Discount Section */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-[64px] justify-center">
               {!editingDiscount.active && state.discount === 0 ? (
@@ -424,17 +437,10 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             </div>
 
             <div className="mt-6 pt-6 border-t border-slate-200 space-y-2">
-              <button
-                onClick={onOpenTotalEdit}
-                className="w-full flex justify-between items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors group"
-                title="Tap to correct the total"
-              >
-                <span className="flex items-center gap-1.5">
-                  Receipt Total
-                  <EditIcon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </span>
+              <div className="w-full flex justify-between items-center text-sm text-slate-500">
+                <span>Receipt Total</span>
                 <span className="font-medium">{formatCurrency(state.total)}</span>
-              </button>
+              </div>
               {state.discount > 0 && (
                 <div className="flex justify-between items-center text-sm text-red-500 font-medium">
                   <span>Extra Discount ({state.discount}%)</span>
@@ -545,6 +551,18 @@ const EditToggle: React.FC<{ active: boolean; onClick: () => void }> = ({ active
   >
     {active ? <CheckIcon className="w-3.5 h-3.5" /> : <EditIcon className="w-3.5 h-3.5" />}
     <span>{active ? 'Done' : 'Edit items'}</span>
+  </button>
+);
+
+// Discards in-progress edits and leaves edit mode. Styled as a ghost pill that
+// mirrors EditToggle's size so the two sit together cleanly.
+const CancelEditButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <button
+    onClick={onClick}
+    className="flex items-center gap-1.5 text-xs font-bold rounded-full px-2.5 py-1 text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-95"
+  >
+    <XIcon className="w-3.5 h-3.5" />
+    <span>Cancel</span>
   </button>
 );
 

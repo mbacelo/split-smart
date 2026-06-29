@@ -3,9 +3,10 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
 import { getUser, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
-import { ReceiptIcon, CheckIcon, SettingsIcon } from './components/Icons';
+import { ReceiptIcon, CheckIcon, SettingsIcon, RotateCcwIcon } from './components/Icons';
 import { formatCurrency } from './utils/currency';
 import { SettingsModal } from './components/SettingsModal';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { UploadStep } from './components/UploadStep';
 import { AnalyzingStep } from './components/AnalyzingStep';
 import { SplittingStep } from './components/SplittingStep';
@@ -17,10 +18,14 @@ export default function App() {
 
   const [activePersonId, setActivePersonId] = useState<string | null>(state.people[0]?.id || null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
   // Transient UI flag (not persisted): flips the item list between assign mode
   // and edit mode where rows become editable name/qty/price fields.
   const [isEditingItems, setIsEditingItems] = useState(false);
+  // Snapshot of items/assignments taken when edit mode opens. Edits apply live,
+  // so Cancel restores this snapshot; Done (commit) just discards it.
+  const editSnapshot = useRef<Pick<AppState, 'items' | 'assignments'> | null>(null);
 
   // Auth: subscribe to sign-in state from the Google Identity wrapper.
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
@@ -178,22 +183,46 @@ export default function App() {
     });
   };
 
-  const handleReset = () => {
-    if (window.confirm("Are you sure you want to start over?")) {
-      setState(prev => ({
-        ...prev,
-        step: 'upload',
-        receiptImage: null,
-        items: [],
-        total: 0,
-        discount: 0,
-        assignments: {},
-        error: null,
-      }));
-      setEditingTotal({ active: false, value: 0 });
-      setEditingDiscount({ active: false, value: 0 });
-      setIsEditingItems(false);
+  // Enter edit mode (snapshotting current items/assignments so Cancel can revert)
+  // or commit and leave (discarding the snapshot).
+  const toggleEditItems = () => {
+    setIsEditingItems(prev => {
+      if (!prev) {
+        editSnapshot.current = { items: state.items, assignments: state.assignments };
+        return true;
+      }
+      editSnapshot.current = null;
+      return false;
+    });
+  };
+
+  // Abandon edits: restore the snapshot taken when edit mode opened, then leave.
+  const cancelEditItems = () => {
+    if (editSnapshot.current) {
+      const snap = editSnapshot.current;
+      setState(prev => ({ ...prev, items: snap.items, assignments: snap.assignments }));
+      editSnapshot.current = null;
     }
+    setIsEditingItems(false);
+  };
+
+  const handleReset = () => setShowResetConfirm(true);
+
+  const performReset = () => {
+    setState(prev => ({
+      ...prev,
+      step: 'upload',
+      receiptImage: null,
+      items: [],
+      total: 0,
+      discount: 0,
+      assignments: {},
+      error: null,
+    }));
+    setEditingTotal({ active: false, value: 0 });
+    setEditingDiscount({ active: false, value: 0 });
+    setIsEditingItems(false);
+    setShowResetConfirm(false);
   };
 
   const handleSavePeople = (newPeople: Person[]) => {
@@ -330,6 +359,17 @@ export default function App() {
         onReset={handleResetPeople}
       />
 
+      <ConfirmDialog
+        isOpen={showResetConfirm}
+        title="Start over?"
+        message="This clears the current receipt, items, and assignments so you can scan a new one. Your saved people are kept."
+        confirmLabel="Start Over"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={performReset}
+        onCancel={() => setShowResetConfirm(false)}
+      />
+
       {/* Toast Notification */}
       {showToast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] animate-slide-down">
@@ -355,9 +395,11 @@ export default function App() {
             {state.step === 'splitting' && (
               <button
                 onClick={handleReset}
-                className="text-sm font-medium text-slate-500 hover:text-red-500 transition-colors mr-2 hidden sm:block"
+                className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-red-500 transition-colors mr-2"
+                title="Start over with a new receipt"
               >
-                New Receipt
+                <RotateCcwIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">New Receipt</span>
               </button>
             )}
             <button
@@ -404,7 +446,8 @@ export default function App() {
             onSelectPerson={setActivePersonId}
             onShare={handleShare}
             isEditingItems={isEditingItems}
-            onToggleEditItems={() => setIsEditingItems(v => !v)}
+            onToggleEditItems={toggleEditItems}
+            onCancelEditItems={cancelEditItems}
             onUpdateItem={updateItem}
             onAddItem={addItem}
             onDeleteItem={deleteItem}
