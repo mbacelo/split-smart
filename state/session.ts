@@ -12,7 +12,7 @@ const SESSION_KEY = 'splitSmart_session';
 
 // Bump when the persisted session shape changes so stale data is discarded
 // rather than rehydrated into an incompatible state.
-const SESSION_VERSION = 1;
+const SESSION_VERSION = 2;
 
 interface PersistedSession {
   v: number;
@@ -21,6 +21,9 @@ interface PersistedSession {
   total: number;
   discount: number;
   assignments: AssignmentState;
+  // Downscaled JPEG data URL so a mid-split refresh can still show the receipt
+  // for cross-checking. May be absent if storage was full when it was saved.
+  receiptImage?: string | null;
 }
 
 export const getInitialPeople = (): Person[] => [
@@ -63,7 +66,7 @@ export const makeInitialState = (): AppState => {
   const session = loadSession();
   return {
     step: session?.step ?? 'upload',
-    receiptImage: null,
+    receiptImage: session?.receiptImage ?? null,
     items: session?.items ?? [],
     total: session?.total ?? 0,
     discount: session?.discount ?? 0,
@@ -99,7 +102,14 @@ export const saveSession = (state: AppState): void => {
       total: state.total,
       discount: state.discount,
       assignments: state.assignments,
+      receiptImage: state.receiptImage,
     };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+    } catch {
+      // Likely a quota error from the image. Retry without it so the split
+      // work (items/assignments) still survives a refresh.
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, receiptImage: null }));
+    }
   } catch { /* non-fatal */ }
 };

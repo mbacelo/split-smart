@@ -1,10 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { AppState, Person, ReceiptItem } from '../types';
 import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses } from './personColors';
 import { PersonCard } from './PersonCard';
-import { CheckIcon, PlusIcon, XIcon, TrashIcon, SettingsIcon as EditIcon, ShareIcon } from './Icons';
+import { CheckIcon, PlusIcon, XIcon, TrashIcon, SettingsIcon as EditIcon, ShareIcon, UsersIcon, ReceiptIcon } from './Icons';
 
 interface EditState { active: boolean; value: number; }
 
@@ -13,9 +13,11 @@ type ItemPatch = Partial<Pick<ReceiptItem, 'name' | 'quantity' | 'originalPrice'
 interface SplittingStepProps {
   state: AppState;
   stats: SplitStats;
+  receiptImage: string | null;
   activePersonId: string | null;
   activePerson: Person | undefined;
   onToggleAssignment: (itemId: string) => void;
+  onToggleAllAssignment: (itemId: string) => void;
   onSelectPerson: (personId: string) => void;
   onShare: () => void;
   // Item editing
@@ -41,9 +43,11 @@ interface SplittingStepProps {
 export const SplittingStep: React.FC<SplittingStepProps> = ({
   state,
   stats,
+  receiptImage,
   activePersonId,
   activePerson,
   onToggleAssignment,
+  onToggleAllAssignment,
   onSelectPerson,
   onShare,
   isEditingItems,
@@ -77,6 +81,9 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
     const person = state.people.find((p) => p.id === personId);
     return person ? getColorClasses(person.color).bgSolid : 'bg-slate-400';
   };
+
+  // Full-screen receipt preview, for cross-checking the AI's reading.
+  const [isReceiptZoomed, setIsReceiptZoomed] = useState(false);
 
   // Track the name input of each edit row so a freshly-added item can autofocus.
   const nameInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -117,6 +124,26 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         {/* Left Column: Items List */}
         <div className="lg:col-span-7 space-y-6 pb-40 lg:pb-0">
 
+          {/* Receipt photo — tap to zoom and verify the AI's reading */}
+          {receiptImage && (
+            <button
+              onClick={() => setIsReceiptZoomed(true)}
+              className="mx-4 lg:mx-0 flex items-center gap-3 w-[calc(100%-2rem)] lg:w-full bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm hover:border-indigo-300 hover:shadow transition-all text-left group"
+              title="View the receipt photo"
+            >
+              <img
+                src={receiptImage}
+                alt="Receipt"
+                className="w-12 h-12 object-cover rounded-lg border border-slate-200 shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-700 group-hover:text-indigo-600 transition-colors">View receipt</p>
+                <p className="text-xs text-slate-400">Tap to check items &amp; prices</p>
+              </div>
+              <ReceiptIcon className="w-4 h-4 text-slate-300 ml-auto mr-1 shrink-0" />
+            </button>
+          )}
+
           <div className="bg-white lg:rounded-2xl shadow-sm border-y lg:border border-slate-200 overflow-hidden">
             {/* Desktop header: title + subtotal + edit toggle */}
             <div className="hidden lg:flex px-6 py-4 border-b border-slate-100 bg-slate-50 justify-between items-center">
@@ -130,7 +157,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   className="text-sm text-slate-500 flex items-center gap-2 hover:text-indigo-600 transition-colors group"
                   title="Tap to correct the total"
                 >
-                  Subtotal: <span className="font-bold text-slate-900">{formatCurrency(state.total)}</span>
+                  Receipt Total: <span className="font-bold text-slate-900">{formatCurrency(state.total)}</span>
                   <EditIcon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
                 {state.discount > 0 && (
@@ -173,6 +200,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 {itemAdjustments.map((item) => {
                   const assignedPersonIds = (state.assignments[item.id] || []).filter((pid) => state.people.some((p) => p.id === pid));
                   const isAssignedToActive = activePersonId && assignedPersonIds.includes(activePersonId);
+                  const allAssigned = state.people.length > 0 && state.people.every((p) => assignedPersonIds.includes(p.id));
                   const activeColor = activePerson?.color;
                   const ac = activeColor ? getColorClasses(activeColor) : null;
                   const bgClass = isAssignedToActive && ac ? ac.bgSubtle : 'hover:bg-slate-50';
@@ -219,11 +247,25 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                         </div>
                       </div>
 
-                      <div className="text-right">
-                        <p className="font-semibold text-slate-900">{formatCurrency(item.adjustedPrice)}</p>
-                        {(itemsTotalSum !== state.total || state.discount > 0) && (
-                          <p className="text-xs text-slate-400 line-through">{formatCurrency(item.originalPrice)}</p>
-                        )}
+                      <div className="text-right flex flex-col items-end gap-1.5">
+                        <div>
+                          <p className="font-semibold text-slate-900">{formatCurrency(item.adjustedPrice)}</p>
+                          {(itemsTotalSum !== state.total || state.discount > 0) && (
+                            <p className="text-xs text-slate-400 line-through">{formatCurrency(item.originalPrice)}</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onToggleAllAssignment(item.id); }}
+                          title={allAssigned ? 'Remove everyone from this item' : 'Split this item across everyone'}
+                          aria-pressed={allAssigned}
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 transition-colors active:scale-95
+                            ${allAssigned
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                        >
+                          <UsersIcon className="w-3 h-3" />
+                          All
+                        </button>
                       </div>
                     </div>
                   );
@@ -458,6 +500,32 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
           })}
         </div>
       </div>
+
+      {/* Full-screen receipt preview */}
+      {isReceiptZoomed && receiptImage && (
+        <div
+          onClick={() => setIsReceiptZoomed(false)}
+          className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Receipt photo"
+        >
+          <button
+            onClick={() => setIsReceiptZoomed(false)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            title="Close"
+            aria-label="Close receipt preview"
+          >
+            <XIcon className="w-6 h-6" />
+          </button>
+          <img
+            src={receiptImage}
+            alt="Receipt"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+          />
+        </div>
+      )}
     </>
   );
 };

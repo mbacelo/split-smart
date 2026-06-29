@@ -69,7 +69,7 @@ export default function App() {
   // (and force another paid AI call). Cleared automatically when not splitting.
   useEffect(() => {
     saveSession(state);
-  }, [state.step, state.items, state.total, state.discount, state.assignments]);
+  }, [state.step, state.items, state.total, state.discount, state.assignments, state.receiptImage]);
 
   // Toast timeout
   useEffect(() => {
@@ -120,6 +120,23 @@ export default function App() {
           ...prev.assignments,
           [itemId]: newAssignments
         }
+      };
+    });
+  };
+
+  // Assign an item to everyone at once (or clear it if everyone already has it)
+  // — a shortcut for shared items like a table appetizer.
+  const toggleAllAssignment = (itemId: string) => {
+    setState(prev => {
+      const allPersonIds = prev.people.map(p => p.id);
+      const current = prev.assignments[itemId] || [];
+      const everyoneHasIt = allPersonIds.length > 0 && allPersonIds.every(id => current.includes(id));
+      return {
+        ...prev,
+        assignments: {
+          ...prev.assignments,
+          [itemId]: everyoneHasIt ? [] : allPersonIds,
+        },
       };
     });
   };
@@ -255,8 +272,10 @@ export default function App() {
     if (navigator.share) {
       try {
         await navigator.share({ title: 'SplitSmart Receipt Summary', text: summary });
-      } catch (err) {
-        console.error('Error sharing:', err);
+      } catch (err: any) {
+        // Dismissing the native share sheet rejects with AbortError — that's a
+        // normal user action, not a failure, so don't surface it.
+        if (err?.name !== 'AbortError') console.error('Error sharing:', err);
       }
     } else {
       try {
@@ -377,9 +396,11 @@ export default function App() {
           <SplittingStep
             state={state}
             stats={stats}
+            receiptImage={state.receiptImage}
             activePersonId={activePersonId}
             activePerson={activePerson}
             onToggleAssignment={toggleAssignment}
+            onToggleAllAssignment={toggleAllAssignment}
             onSelectPerson={setActivePersonId}
             onShare={handleShare}
             isEditingItems={isEditingItems}
