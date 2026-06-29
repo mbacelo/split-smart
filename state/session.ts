@@ -6,6 +6,7 @@
 // call. People live under their own key so resetting a session keeps them.
 
 import { AppState, Person, AssignmentState, ReceiptItem } from '../types';
+import { getUserFirstName } from '../services/auth';
 
 const PEOPLE_KEY = 'splitSmart_people';
 const SESSION_KEY = 'splitSmart_session';
@@ -31,19 +32,24 @@ interface PersistedSession {
 
 // Two people is the minimum needed to split; users add more as needed via the
 // quick-add control in the splitting view or the settings modal.
-export const getInitialPeople = (): Person[] => [
-  { id: 'p1', name: 'Person #1', color: 'blue' },
+export const getInitialPeople = (firstName?: string): Person[] => [
+  { id: 'p1', name: firstName?.trim() || 'Person #1', color: 'blue' },
   { id: 'p2', name: 'Person #2', color: 'green' },
 ];
 
-const loadPeople = (): Person[] => {
+const loadPeople = (firstName?: string): Person[] => {
   try {
     const saved = localStorage.getItem(PEOPLE_KEY);
     const parsed = saved ? (JSON.parse(saved) as Person[]) : null;
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : getInitialPeople();
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : getInitialPeople(firstName);
   } catch {
-    return getInitialPeople();
+    return getInitialPeople(firstName);
   }
+};
+
+/** Whether a customized people list has been persisted (vs. still defaults). */
+export const hasSavedPeople = (): boolean => {
+  try { return !!localStorage.getItem(PEOPLE_KEY); } catch { return false; }
 };
 
 // Returns a persisted session if one exists and is still mid-split. We never
@@ -64,7 +70,7 @@ const loadSession = (): PersistedSession | null => {
 
 /** Build the app's initial state, rehydrating people and any saved session. */
 export const makeInitialState = (): AppState => {
-  const people = loadPeople();
+  const people = loadPeople(getUserFirstName() ?? undefined);
   const session = loadSession();
   // Only restore the image when we actually have a session to attach it to,
   // otherwise a stale image could outlive its cleared session.

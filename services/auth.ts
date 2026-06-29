@@ -124,6 +124,14 @@ export const getIdToken = (): string | null => {
 
 export const getUser = (): AuthUser | null => user;
 
+/** First whitespace-delimited token of the signed-in user's name, or null. */
+export const getUserFirstName = (): string | null => {
+  const n = user?.name?.trim();
+  // `name` falls back to email when Google omits it (see decode); don't seed that.
+  if (!n || n.includes("@")) return null;
+  return n.split(/\s+/)[0];
+};
+
 /** True while a silent re-auth is expected on launch (show a loading state). */
 export const isAuthResolving = (): boolean => authResolving;
 
