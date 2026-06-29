@@ -4,6 +4,7 @@ import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses, defaultPersonName } from './personColors';
 import { PersonCard } from './PersonCard';
+import { ConfirmDialog } from './ConfirmDialog';
 import { Check, Plus, X, Trash2, Pencil, Share, Users, Receipt, RotateCcw } from 'lucide-react';
 
 interface EditState { active: boolean; value: number; }
@@ -26,6 +27,9 @@ interface SplittingStepProps {
   onAddPerson: () => void;
   onRenamePerson: (personId: string, name: string) => void;
   onRemovePerson: (personId: string) => void;
+  onStartEditPeople: () => void;
+  onCancelEditPeople: () => void;
+  onResetPeople: () => void;
   onShare: () => void;
   // Item editing
   isEditingItems: boolean;
@@ -62,6 +66,9 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   onAddPerson,
   onRenamePerson,
   onRemovePerson,
+  onStartEditPeople,
+  onCancelEditPeople,
+  onResetPeople,
   onShare,
   isEditingItems,
   onToggleEditItems,
@@ -111,6 +118,27 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   // putting rename/remove in reach without opening the settings modal.
   const [isEditingPeople, setIsEditingPeople] = useState(false);
 
+  // Confirm gate for restoring the default people list — a destructive action
+  // (clears the list and assignments), so it asks before wiping.
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+
+  // Enter edit mode (snapshotting people so Cancel can revert) or commit and
+  // leave. Mirrors the items list's Edit/Done + Cancel affordance.
+  const toggleEditPeople = () => {
+    if (isEditingPeople) {
+      setIsEditingPeople(false);
+    } else {
+      onStartEditPeople();
+      setIsEditingPeople(true);
+    }
+  };
+
+  // Abandon people edits: revert to the snapshot taken when edit mode opened.
+  const cancelEditPeople = () => {
+    onCancelEditPeople();
+    setIsEditingPeople(false);
+  };
+
   // When a name is left blank, backfill a default on blur so we never persist an
   // empty participant (mirrors the settings modal's non-empty rule).
   const handleNameBlur = (personId: string, name: string) => {
@@ -129,6 +157,8 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   // type a name immediately without clearing it first.
   const handleAddPerson = () => {
     const idsBefore = new Set(state.people.map((p) => p.id));
+    // Snapshot before the first edit so Cancel can also undo a just-added person.
+    if (!isEditingPeople) onStartEditPeople();
     setIsEditingPeople(true);
     onAddPerson();
     setTimeout(() => {
@@ -491,7 +521,8 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-3">
                 <h3 className="font-semibold text-slate-700">People</h3>
-                <EditToggle active={isEditingPeople} onClick={() => setIsEditingPeople(v => !v)} idleLabel="Edit" />
+                <EditToggle active={isEditingPeople} onClick={toggleEditPeople} idleLabel="Edit" />
+                {isEditingPeople && <CancelEditButton onClick={cancelEditPeople} />}
               </div>
               <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
                 Remaining: <span className={unassignedTotal > 0.01 ? 'text-red-500' : 'text-green-600'}>
@@ -533,6 +564,15 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 <Plus className="w-4 h-4" />
                 <span>Add person</span>
               </button>
+              {isEditingPeople && (
+                <button
+                  onClick={() => setShowRestoreConfirm(true)}
+                  className="w-full flex items-center justify-center gap-2 text-sm font-medium text-slate-500 hover:text-indigo-600 hover:bg-slate-50 rounded-lg py-2 transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Restore default</span>
+                </button>
+              )}
             </div>
 
             <div className="mt-6 pt-6 border-t border-slate-200 space-y-2">
@@ -570,7 +610,8 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               {isEditingPeople ? 'Edit people' : 'Select to assign'}
             </span>
-            <EditToggle active={isEditingPeople} onClick={() => setIsEditingPeople(v => !v)} idleLabel="Edit" />
+            <EditToggle active={isEditingPeople} onClick={toggleEditPeople} idleLabel="Edit" />
+            {isEditingPeople && <CancelEditButton onClick={cancelEditPeople} />}
           </div>
           <button onClick={onShare} className="flex items-center gap-1.5 text-indigo-600 font-bold text-xs">
             <Share className="w-3.5 h-3.5" />
@@ -596,6 +637,13 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             >
               <Plus className="w-4 h-4" />
               <span>Add person</span>
+            </button>
+            <button
+              onClick={() => setShowRestoreConfirm(true)}
+              className="w-full flex items-center justify-center gap-2 text-sm font-medium text-slate-500 hover:text-indigo-600 hover:bg-slate-50 rounded-lg py-2 transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Restore default</span>
             </button>
           </div>
         ) : (
@@ -645,6 +693,18 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         </div>
         )}
       </div>
+
+      {/* Restore-default-people confirmation (covers both desktop & mobile triggers) */}
+      <ConfirmDialog
+        isOpen={showRestoreConfirm}
+        title="Restore default people?"
+        message="This replaces your current people with the original two (Person #1 and #2) and clears their item assignments."
+        confirmLabel="Restore"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => { onResetPeople(); setShowRestoreConfirm(false); }}
+        onCancel={() => setShowRestoreConfirm(false)}
+      />
 
       {/* Full-screen receipt preview */}
       {isReceiptZoomed && receiptImage && (

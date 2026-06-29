@@ -14,8 +14,8 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-// A lightweight in-app confirmation, styled to match SettingsModal's reset-confirm
-// panel — used in place of the browser's native window.confirm().
+// A lightweight in-app confirmation — used in place of the browser's native
+// window.confirm().
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isOpen,
   title,

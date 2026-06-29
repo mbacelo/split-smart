@@ -2,23 +2,21 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
-import { getUser, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
-import { Receipt, Check, Settings, RotateCcw } from 'lucide-react';
+import { getUser, getUserFirstName, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
+import { Receipt, Check, RotateCcw } from 'lucide-react';
 import { formatCurrency } from './utils/currency';
-import { SettingsModal } from './components/SettingsModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { UploadStep } from './components/UploadStep';
 import { AnalyzingStep } from './components/AnalyzingStep';
 import { SplittingStep } from './components/SplittingStep';
 import { computeStats } from './state/stats';
 import { createPerson } from './components/personColors';
-import { getInitialPeople, makeInitialState, savePeople, clearPeople, saveSession, saveSessionImage } from './state/session';
+import { getInitialPeople, makeInitialState, savePeople, clearPeople, saveSession, saveSessionImage, hasSavedPeople } from './state/session';
 
 export default function App() {
   const [state, setState] = useState<AppState>(makeInitialState);
 
   const [activePersonId, setActivePersonId] = useState<string | null>(state.people[0]?.id || null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
   // Transient UI flag (not persisted): flips the item list between assign mode
@@ -27,6 +25,10 @@ export default function App() {
   // Snapshot of items/assignments taken when edit mode opens. Edits apply live,
   // so Cancel restores this snapshot; Done (commit) just discards it.
   const editSnapshot = useRef<Pick<AppState, 'items' | 'assignments'> | null>(null);
+  // Same idea for the People list: snapshot people + assignments when inline
+  // people-edit mode opens, so Cancel can revert renames/removes/adds (which
+  // otherwise persist live).
+  const peopleSnapshot = useRef<Pick<AppState, 'people' | 'assignments'> | null>(null);
 
   // Auth: subscribe to sign-in state from the Google Identity wrapper.
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
@@ -37,6 +39,20 @@ export default function App() {
     setUser(getUser());
     setResolvingAuth(isAuthResolving());
   }), []);
+
+  // First-time visitors sign in after mount, when the people list is still the
+  // untouched default. Seed Person #1 with their first name once we know it.
+  // Only touches a still-pristine p1 (never a customized/saved list) and isn't
+  // persisted here — it saves later if the user edits anything, like other defaults.
+  useEffect(() => {
+    const first = getUserFirstName();
+    if (!first || hasSavedPeople()) return;
+    setState(prev => {
+      const p1 = prev.people[0];
+      if (!p1 || p1.id !== 'p1' || p1.name !== 'Person #1') return prev;
+      return { ...prev, people: prev.people.map(p => p.id === 'p1' ? { ...p, name: first } : p) };
+    });
+  }, [user]);
 
   // Initialize GIS whenever we're signed out (this also fires the silent
   // re-auth prompt for remembered users) and render the fallback Sign-In
@@ -249,6 +265,24 @@ export default function App() {
     setIsEditingItems(false);
   };
 
+  // Snapshot the people list when inline edit mode opens, so a later Cancel can
+  // revert. Renames/removes/adds save live, so we capture assignments too (a
+  // removal prunes them).
+  const startEditPeople = () => {
+    peopleSnapshot.current = { people: state.people, assignments: state.assignments };
+  };
+
+  // Abandon people edits: restore the snapshot to state and re-persist it,
+  // undoing any live saves made while editing.
+  const cancelEditPeople = () => {
+    const snap = peopleSnapshot.current;
+    if (snap) {
+      setState(prev => ({ ...prev, people: snap.people, assignments: snap.assignments }));
+      savePeople(snap.people);
+      peopleSnapshot.current = null;
+    }
+  };
+
   const handleReset = () => setShowResetConfirm(true);
 
   const performReset = () => {
@@ -270,22 +304,6 @@ export default function App() {
     setShowResetConfirm(false);
   };
 
-  const handleSavePeople = (newPeople: Person[]) => {
-    // Clean up assignments for removed people
-    const newPersonIds = new Set(newPeople.map(p => p.id));
-    const newAssignments: AssignmentState = {};
-
-    Object.entries(state.assignments).forEach(([itemId, personIds]) => {
-      const filteredIds = (personIds as string[]).filter(pid => newPersonIds.has(pid));
-      if (filteredIds.length > 0) {
-        newAssignments[itemId] = filteredIds;
-      }
-    });
-
-    setState(prev => ({ ...prev, people: newPeople, assignments: newAssignments }));
-    savePeople(newPeople);
-  };
-
   // Quick-add a participant from the splitting view (no modal): append an
   // auto-named, auto-colored person, persist, and select them so the next item
   // tap assigns to them immediately.
@@ -305,15 +323,23 @@ export default function App() {
     savePeople(people);
   };
 
-  // Inline remove from the splitting view. Reuses handleSavePeople so the
-  // removed person's assignments are cleaned up. Always keep at least one person.
+  // Inline remove from the splitting view. Drops the person and prunes their
+  // item assignments so no orphan ids linger. Always keep at least one person.
   const removePerson = (id: string) => {
     if (state.people.length <= 1) return;
-    handleSavePeople(state.people.filter(p => p.id !== id));
+    const newPeople = state.people.filter(p => p.id !== id);
+    const remainingIds = new Set(newPeople.map(p => p.id));
+    const newAssignments: AssignmentState = {};
+    Object.entries(state.assignments).forEach(([itemId, personIds]) => {
+      const filteredIds = (personIds as string[]).filter(pid => remainingIds.has(pid));
+      if (filteredIds.length > 0) newAssignments[itemId] = filteredIds;
+    });
+    setState(prev => ({ ...prev, people: newPeople, assignments: newAssignments }));
+    savePeople(newPeople);
   };
 
   const handleResetPeople = () => {
-    const defaultPeople = getInitialPeople();
+    const defaultPeople = getInitialPeople(getUserFirstName() ?? undefined);
     setState(prev => ({ ...prev, people: defaultPeople, assignments: {} }));
     clearPeople();
   };
@@ -435,15 +461,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-0 lg:pb-20">
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        people={state.people}
-        initialPeople={getInitialPeople()}
-        onSave={handleSavePeople}
-        onReset={handleResetPeople}
-      />
-
       <ConfirmDialog
         isOpen={showResetConfirm}
         title="Start over?"
@@ -488,13 +505,6 @@ export default function App() {
               </button>
             )}
             <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-full transition-colors"
-              title="Settings"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-            <button
               onClick={signOut}
               className="text-sm font-medium text-slate-500 hover:text-red-500 transition-colors"
               title={`Sign out (${user.email})`}
@@ -533,6 +543,9 @@ export default function App() {
             onAddPerson={handleAddPerson}
             onRenamePerson={renamePerson}
             onRemovePerson={removePerson}
+            onStartEditPeople={startEditPeople}
+            onCancelEditPeople={cancelEditPeople}
+            onResetPeople={handleResetPeople}
             onShare={handleShare}
             isEditingItems={isEditingItems}
             onToggleEditItems={toggleEditItems}
