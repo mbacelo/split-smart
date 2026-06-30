@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
 import { getUser, getUserFirstName, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
-import { Receipt, Check, RotateCcw } from 'lucide-react';
+import { Receipt, Check, RotateCcw, AlertCircle, LogOut } from 'lucide-react';
 import { formatCurrency } from './utils/currency';
 import { makeId } from './utils/id';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -19,7 +19,11 @@ export default function App() {
 
   const [activePersonId, setActivePersonId] = useState<string | null>(state.people[0]?.id || null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showToast, setShowToast] = useState<string | null>(null);
+  // Lightweight toast: a message plus a variant that picks the icon/accent.
+  // Replaces browser alert()s for transient feedback (copy confirmations, image
+  // errors) so notices stay in-app and on-brand.
+  const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' } | null>(null);
+  const notify = (message: string, variant: 'success' | 'error' = 'success') => setToast({ message, variant });
   // Transient UI flag (not persisted): flips the item list between assign mode
   // and edit mode where rows become editable name/qty/price fields.
   const [isEditingItems, setIsEditingItems] = useState(false);
@@ -35,11 +39,34 @@ export default function App() {
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
   const [resolvingAuth, setResolvingAuth] = useState<boolean>(() => isAuthResolving());
   const signInButtonRef = useRef<HTMLDivElement>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => subscribe(() => {
     setUser(getUser());
     setResolvingAuth(isAuthResolving());
   }), []);
+
+  // Close the account dropdown on outside click or Escape.
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAccountMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   // First-time visitors sign in after mount, when the people list is still the
   // untouched default. Seed Person #1 with their first name once we know it.
@@ -78,6 +105,9 @@ export default function App() {
   // Local state for editing to allow Apply/Cancel workflow
   const [editingTotal, setEditingTotal] = useState<{ active: boolean; value: number }>({ active: false, value: 0 });
   const [editingDiscount, setEditingDiscount] = useState<{ active: boolean; value: number }>({ active: false, value: 0 });
+  // Tip editing carries the input mode too (percent vs flat amount) so the user
+  // can switch units while the editor is open before applying.
+  const [editingTip, setEditingTip] = useState<{ active: boolean; value: number; mode: AppState['tipMode'] }>({ active: false, value: 0, mode: 'percent' });
 
   // Sync activePersonId if current people list changes
   useEffect(() => {
@@ -95,7 +125,7 @@ export default function App() {
   // rather than re-serialized to localStorage on every assignment tap/keystroke.
   useEffect(() => {
     saveSession(state);
-  }, [state.step, state.items, state.total, state.discount, state.assignments, state.manualTotalOverride]);
+  }, [state.step, state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.manualTotalOverride]);
 
   // Persist the receipt image separately, only when it actually changes.
   useEffect(() => {
@@ -104,14 +134,14 @@ export default function App() {
 
   // Toast timeout
   useEffect(() => {
-    if (showToast) {
-      const timer = setTimeout(() => setShowToast(null), 3000);
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
       return () => clearTimeout(timer);
     }
-  }, [showToast]);
+  }, [toast]);
 
   // Calculate stats derived from state
-  const stats = useMemo(() => computeStats(state), [state.items, state.total, state.discount, state.assignments, state.people, state.manualEntry, state.manualTotalOverride]);
+  const stats = useMemo(() => computeStats(state), [state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.people, state.manualEntry, state.manualTotalOverride]);
   const { personTotals, effectiveTotal, unassignedTotal } = stats;
 
   const handleImageSelected = async (base64: string) => {
@@ -125,6 +155,8 @@ export default function App() {
         items: result.items,
         total: result.total,
         discount: 0,
+        tip: 0,
+        tipMode: 'percent',
         assignments: {}, // Reset assignments
         manualEntry: false,
         manualTotalOverride: null,
@@ -149,6 +181,8 @@ export default function App() {
       items: [{ id: makeId(), name: '', quantity: 1, originalPrice: 0 }],
       total: 0,
       discount: 0,
+      tip: 0,
+      tipMode: 'percent',
       assignments: {},
       error: null,
       manualEntry: true,
@@ -294,6 +328,8 @@ export default function App() {
       items: [],
       total: 0,
       discount: 0,
+      tip: 0,
+      tipMode: 'percent',
       assignments: {},
       error: null,
       manualEntry: false,
@@ -301,6 +337,7 @@ export default function App() {
     }));
     setEditingTotal({ active: false, value: 0 });
     setEditingDiscount({ active: false, value: 0 });
+    setEditingTip({ active: false, value: 0, mode: 'percent' });
     setIsEditingItems(false);
     setShowResetConfirm(false);
   };
@@ -353,6 +390,7 @@ export default function App() {
     value: state.manualEntry ? (state.manualTotalOverride ?? stats.itemsTotalSum) : state.total,
   });
   const openDiscountEdit = () => setEditingDiscount({ active: true, value: state.discount });
+  const openTipEdit = () => setEditingTip({ active: true, value: state.tip, mode: state.tipMode });
 
   const applyTotalEdit = () => {
     setState(prev => prev.manualEntry
@@ -373,12 +411,36 @@ export default function App() {
     setEditingDiscount({ active: false, value: 0 });
   };
 
+  // Tip applies the value in whichever unit the editor is in. A percentage is
+  // capped at 100% (matching discount); a flat amount is only floored at 0.
+  const applyTipEdit = () => {
+    setState(prev => ({
+      ...prev,
+      tipMode: editingTip.mode,
+      tip: editingTip.mode === 'percent'
+        ? Math.min(100, Math.max(0, editingTip.value))
+        : Math.max(0, editingTip.value),
+    }));
+    setEditingTip({ active: false, value: 0, mode: 'percent' });
+  };
+
+  // Clear the tip entirely (back to no tip), collapsing the editor.
+  const clearTip = () => {
+    setState(prev => ({ ...prev, tip: 0 }));
+    setEditingTip({ active: false, value: 0, mode: 'percent' });
+  };
+
   const cancelTotalEdit = () => setEditingTotal({ active: false, value: 0 });
   const cancelDiscountEdit = () => setEditingDiscount({ active: false, value: 0 });
+  const cancelTipEdit = () => setEditingTip({ active: false, value: 0, mode: 'percent' });
 
   const generateSummaryText = () => {
     let text = `🧾 SplitSmart: Receipt Summary\n`;
     text += `Total Amount: ${formatCurrency(effectiveTotal)}\n`;
+    if (stats.tipAmount > 0) {
+      const tipNote = state.tipMode === 'percent' ? ` (${state.tip}%)` : '';
+      text += `(incl. ${formatCurrency(stats.tipAmount)} tip${tipNote})\n`;
+    }
     text += `---------------------------------\n`;
 
     state.people.forEach(person => {
@@ -443,10 +505,10 @@ export default function App() {
     } else {
       try {
         await navigator.clipboard.writeText(summary);
-        setShowToast("Detailed summary copied!");
+        notify("Detailed summary copied!");
       } catch (err) {
         console.error('Failed to copy:', err);
-        setShowToast("Could not copy to clipboard.");
+        notify("Could not copy to clipboard.", 'error');
       }
     }
   };
@@ -496,11 +558,13 @@ export default function App() {
       />
 
       {/* Toast Notification */}
-      {showToast && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] animate-slide-down">
+      {toast && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] animate-slide-down max-w-[calc(100vw-2rem)]" role="status" aria-live="polite">
           <div className="bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 text-sm font-semibold border border-white/10">
-            <Check className="w-4 h-4 text-green-400" />
-            {showToast}
+            {toast.variant === 'error'
+              ? <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              : <Check className="w-4 h-4 text-green-400 shrink-0" />}
+            <span>{toast.message}</span>
           </div>
         </div>
       )}
@@ -516,24 +580,57 @@ export default function App() {
               SplitSmart
             </h1>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {state.step === 'splitting' && (
               <button
                 onClick={handleReset}
-                className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-red-500 transition-colors mr-2"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-indigo-200 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
                 title="Start over with a new receipt"
               >
-                <RotateCcw className="w-5 h-5 sm:w-4 sm:h-4" />
+                <RotateCcw className="w-4 h-4" />
                 <span className="hidden sm:inline">New Receipt</span>
               </button>
             )}
-            <button
-              onClick={signOut}
-              className="text-sm font-medium text-slate-500 hover:text-red-500 transition-colors"
-              title={`Sign out (${user.email})`}
-            >
-              Sign out
-            </button>
+
+            {/* Account menu */}
+            <div className="relative" ref={accountMenuRef}>
+              <button
+                onClick={() => setAccountMenuOpen((o) => !o)}
+                className="flex items-center justify-center w-9 h-9 rounded-full overflow-hidden ring-2 ring-transparent hover:ring-indigo-200 focus:ring-indigo-300 focus:outline-none transition-shadow"
+                title={user.email}
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                aria-label="Account menu"
+              >
+                {user.picture ? (
+                  <img src={user.picture} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <span className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-sm font-semibold">
+                    {(user.name || user.email).trim().charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </button>
+
+              {accountMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-60 origin-top-right rounded-xl bg-white shadow-lg ring-1 ring-slate-200 py-1 z-40"
+                >
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
+                    <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                  </div>
+                  <button
+                    role="menuitem"
+                    onClick={() => { setAccountMenuOpen(false); signOut(); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -548,7 +645,7 @@ export default function App() {
           </div>
         )}
 
-        {state.step === 'upload' && <UploadStep onImageSelected={handleImageSelected} onManualEntry={startManualEntry} />}
+        {state.step === 'upload' && <UploadStep onImageSelected={handleImageSelected} onManualEntry={startManualEntry} onError={(msg) => notify(msg, 'error')} />}
 
         {state.step === 'analyzing' && <AnalyzingStep />}
 
@@ -587,6 +684,13 @@ export default function App() {
             onChangeDiscountEdit={(value) => setEditingDiscount(prev => ({ ...prev, value }))}
             onApplyDiscountEdit={applyDiscountEdit}
             onCancelDiscountEdit={cancelDiscountEdit}
+            editingTip={editingTip}
+            onOpenTipEdit={openTipEdit}
+            onChangeTipEdit={(value) => setEditingTip(prev => ({ ...prev, value }))}
+            onChangeTipMode={(mode) => setEditingTip(prev => ({ ...prev, mode }))}
+            onApplyTipEdit={applyTipEdit}
+            onCancelTipEdit={cancelTipEdit}
+            onClearTip={clearTip}
           />
         )}
       </main>
