@@ -379,7 +379,7 @@ export default function App() {
   const generateSummaryText = () => {
     let text = `🧾 SplitSmart: Receipt Summary\n`;
     text += `Total Amount: ${formatCurrency(effectiveTotal)}\n`;
-    text += `--------------------------\n`;
+    text += `---------------------------------\n`;
 
     state.people.forEach(person => {
       const total = personTotals[person.id] || 0;
@@ -402,9 +402,23 @@ export default function App() {
       text += `⚠️ UNASSIGNED: ${formatCurrency(unassignedTotal)}\n\n`;
     }
 
-    text += `--------------------------\n`;
-    text += `Shared via SplitSmart AI`;
     return text;
+  };
+
+  // Turn the stored receipt data URL into a File so it can ride along in the
+  // native share sheet (e.g. attach the photo to a WhatsApp message). Returns
+  // null if there's no image (manual entry) or the data URL can't be parsed.
+  const receiptImageToFile = async (): Promise<File | null> => {
+    const dataUrl = state.receiptImage;
+    if (!dataUrl || !dataUrl.startsWith('data:')) return null;
+    try {
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+      return new File([blob], `receipt.${ext}`, { type: blob.type || 'image/jpeg' });
+    } catch {
+      return null;
+    }
   };
 
   const handleShare = async () => {
@@ -412,7 +426,15 @@ export default function App() {
 
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'SplitSmart Receipt Summary', text: summary });
+        // Attach the receipt photo when the platform supports file sharing,
+        // so the recipient gets the image alongside the breakdown.
+        const file = await receiptImageToFile();
+        const withFiles = file ? { files: [file] } : null;
+        if (withFiles && navigator.canShare?.(withFiles)) {
+          await navigator.share({ title: 'SplitSmart Receipt Summary', text: summary, ...withFiles });
+        } else {
+          await navigator.share({ title: 'SplitSmart Receipt Summary', text: summary });
+        }
       } catch (err: any) {
         // Dismissing the native share sheet rejects with AbortError — that's a
         // normal user action, not a failure, so don't surface it.
