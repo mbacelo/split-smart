@@ -17,7 +17,7 @@ const IMAGE_KEY = 'splitSmart_sessionImage';
 
 // Bump when the persisted session shape changes so stale data is discarded
 // rather than rehydrated into an incompatible state.
-const SESSION_VERSION = 4;
+const SESSION_VERSION = 5;
 
 interface PersistedSession {
   v: number;
@@ -25,6 +25,8 @@ interface PersistedSession {
   items: ReceiptItem[];
   total: number;
   discount: number;
+  tip?: number;
+  tipMode?: AppState['tipMode'];
   assignments: AssignmentState;
   manualEntry?: boolean;
   manualTotalOverride?: number | null;
@@ -80,6 +82,8 @@ export const makeInitialState = (): AppState => {
     items: session?.items ?? [],
     total: session?.total ?? 0,
     discount: session?.discount ?? 0,
+    tip: session?.tip ?? 0,
+    tipMode: session?.tipMode ?? 'percent',
     assignments: session?.assignments ?? {},
     people,
     error: null,
@@ -114,6 +118,8 @@ export const saveSession = (state: AppState): void => {
       items: state.items,
       total: state.total,
       discount: state.discount,
+      tip: state.tip,
+      tipMode: state.tipMode,
       assignments: state.assignments,
       manualEntry: state.manualEntry,
       manualTotalOverride: state.manualTotalOverride,

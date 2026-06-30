@@ -4,6 +4,9 @@ import { downscaleImage } from '../utils/image';
 
 interface ImageUploaderProps {
   onImageSelected: (base64: string) => void;
+  // Surface a user-facing error (bad file type, unreadable image) as an in-app
+  // toast instead of a browser alert().
+  onError: (message: string) => void;
 }
 
 // Read a File into a data URL, repairing the HEIC mime type when the browser
@@ -25,7 +28,7 @@ const readFile = (file: File, isHeic: boolean): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
-export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected }) => {
+export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected, onError }) => {
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -45,7 +48,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected })
 
     // Check if image
     if (!file.type.startsWith('image/') && !isHeic) {
-      alert('Please upload an image file');
+      onError('Please upload an image file.');
       return;
     }
 
@@ -57,7 +60,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected })
       const optimized = await downscaleImage(base64);
       onImageSelected(optimized);
     } catch {
-      alert('Could not read that image. Please try another photo.');
+      onError('Could not read that image. Please try another photo.');
     } finally {
       setIsProcessing(false);
     }

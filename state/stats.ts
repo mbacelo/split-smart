@@ -16,6 +16,8 @@ export interface SplitStats {
   itemAdjustments: ItemAdjustment[];
   effectiveTotal: number;
   discountAmount: number;
+  // The tip money added on top of the post-discount subtotal (0 when no tip).
+  tipAmount: number;
   unassignedTotal: number;
   unassignedItemCount: number;
   itemsTotalSum: number;
@@ -53,7 +55,15 @@ export const computeStats = (state: AppState): SplitStats => {
     ? (state.manualTotalOverride ?? itemsSum)
     : state.total;
   const discountAmount = (baseTotal * state.discount) / 100;
-  const effectiveTotal = Math.max(0, baseTotal - discountAmount);
+  const postDiscount = Math.max(0, baseTotal - discountAmount);
+  // Tip is added on top of the post-discount subtotal. A percentage tip is taken
+  // of that subtotal; a flat tip is the amount as-is. Either way it's clamped
+  // non-negative so a stray negative value can't shrink the total.
+  const tipAmount = Math.max(
+    0,
+    state.tipMode === 'amount' ? state.tip : (postDiscount * state.tip) / 100,
+  );
+  const effectiveTotal = postDiscount + tipAmount;
   const adjustmentFactor = itemsSum > 0 ? effectiveTotal / itemsSum : 1;
 
   const totalCents: Record<string, number> = {};
@@ -90,6 +100,7 @@ export const computeStats = (state: AppState): SplitStats => {
     itemAdjustments,
     effectiveTotal,
     discountAmount,
+    tipAmount,
     unassignedTotal: effectiveTotal - assignedCents / 100,
     unassignedItemCount,
     itemsTotalSum: itemsSum,

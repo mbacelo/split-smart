@@ -28,6 +28,13 @@ export interface AppState {
   items: ReceiptItem[];
   total: number;
   discount: number; // Discount as a percentage (0-100)
+  // Tip added on top of the post-discount total. The user enters it either as a
+  // percentage of that total (tipMode 'percent') or as a flat money amount
+  // (tipMode 'amount'); `tip` holds the value in whichever unit tipMode selects.
+  // The resulting tip money is folded into effectiveTotal in computeStats, so it
+  // scales across items the same way a scanned receipt's tip/tax does. 0 = none.
+  tip: number;
+  tipMode: 'percent' | 'amount';
   assignments: AssignmentState;
   people: Person[];
   error: string | null;
