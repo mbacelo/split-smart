@@ -375,6 +375,9 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   const assignedPersonIds = (state.assignments[item.id] || []).filter((pid) => state.people.some((p) => p.id === pid));
                   const isAssignedToActive = activePersonId && assignedPersonIds.includes(activePersonId);
                   const allAssigned = state.people.length > 0 && state.people.every((p) => assignedPersonIds.includes(p.id));
+                  // Flag rows nobody is on yet: their cost scales onto everyone
+                  // else silently, so surface them with a left accent + label.
+                  const isUnassigned = assignedPersonIds.length === 0;
                   const activeColor = activePerson?.color;
                   const ac = activeColor ? getColorClasses(activeColor) : null;
                   const bgClass = isAssignedToActive && ac ? ac.bgSubtle : 'hover:bg-slate-50';
@@ -383,7 +386,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     <div
                       key={item.id}
                       onClick={() => onToggleAssignment(item.id)}
-                      className={`group flex items-center justify-between p-4 cursor-pointer transition-colors duration-200 ${bgClass}`}
+                      className={`group flex items-center justify-between p-4 cursor-pointer transition-colors duration-200 ${bgClass} ${isUnassigned ? 'border-l-4 border-l-amber-300' : 'border-l-4 border-l-transparent'}`}
                     >
                       <div className="flex-1 min-w-0 pr-4">
                         <div className="flex items-center space-x-3">
@@ -404,8 +407,10 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                             {item.name}
                           </p>
                         </div>
-                        <div className="flex -space-x-1.5 mt-2 ml-9 min-h-[20px]">
-                          {assignedPersonIds.map((pid) => {
+                        <div className="flex items-center -space-x-1.5 mt-2 ml-9 min-h-[20px]">
+                          {isUnassigned ? (
+                            <span className="ml-0 text-[10px] font-bold text-amber-600 uppercase tracking-wide">Unassigned</span>
+                          ) : assignedPersonIds.map((pid) => {
                             const p = state.people.find((person) => person.id === pid);
                             if (!p) return null;
                             return (
@@ -708,30 +713,54 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
 
       {/* Full-screen receipt preview */}
       {isReceiptZoomed && receiptImage && (
-        <div
-          onClick={() => setIsReceiptZoomed(false)}
-          className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Receipt photo"
-        >
-          <button
-            onClick={() => setIsReceiptZoomed(false)}
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
-            title="Close"
-            aria-label="Close receipt preview"
-          >
-            <X className="w-6 h-6" />
-          </button>
-          <img
-            src={receiptImage}
-            alt="Receipt"
-            onClick={(e) => e.stopPropagation()}
-            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-          />
-        </div>
+        <ReceiptPreview image={receiptImage} onClose={() => setIsReceiptZoomed(false)} />
       )}
     </>
+  );
+};
+
+// Full-screen receipt preview for cross-checking the AI's reading against the
+// photo. The app's viewport disables native pinch-zoom (user-scalable=no), so
+// instead this offers tap-to-zoom: tap the image to switch between fit-to-screen
+// and 2× (the zoomed view scrolls/pans). Tapping the backdrop closes it.
+const ReceiptPreview: React.FC<{ image: string; onClose: () => void }> = ({ image, onClose }) => {
+  const [zoomed, setZoomed] = useState(false);
+
+  // Close on Escape, like the other overlays.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm overflow-auto animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Receipt photo"
+    >
+      <button
+        onClick={onClose}
+        className="fixed top-4 right-4 z-10 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+        title="Close"
+        aria-label="Close receipt preview"
+      >
+        <X className="w-6 h-6" />
+      </button>
+      <div className="min-h-full flex items-center justify-center p-4">
+        <img
+          src={image}
+          alt="Receipt"
+          onClick={(e) => { e.stopPropagation(); setZoomed((z) => !z); }}
+          title={zoomed ? 'Tap to fit' : 'Tap to zoom in'}
+          className={`rounded-lg shadow-2xl transition-transform duration-200 ${
+            zoomed ? 'max-w-none w-[200%] cursor-zoom-out' : 'max-w-full max-h-[90vh] object-contain cursor-zoom-in'
+          }`}
+        />
+      </div>
+    </div>
   );
 };
 

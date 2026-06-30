@@ -24,16 +24,21 @@ export interface SplitStats {
 
 const toCents = (amount: number): number => Math.round(amount * 100);
 
-// Split `cents` evenly across `n` people, handing the leftover pennies to the
-// first recipients so the parts sum back to `cents` exactly.
-const splitCents = (cents: number, n: number): number[] => {
+// Split `cents` evenly across `n` people, handing the leftover pennies out one
+// each so the parts sum back to `cents` exactly. `offset` rotates which
+// recipient gets the first leftover penny: without it the leftovers always land
+// on the people at the front of the list, so the same person systematically
+// overpays by a cent across many odd-split items. Rotating by the item's index
+// spreads that bias evenly while staying deterministic (no flicker on re-render).
+const splitCents = (cents: number, n: number, offset = 0): number[] => {
   if (n <= 0) return [];
   const base = Math.floor(cents / n);
-  let remainder = cents - base * n;
-  return Array.from({ length: n }, () => {
-    const extra = remainder > 0 ? 1 : 0;
-    if (remainder > 0) remainder -= 1;
-    return base + extra;
+  const remainder = cents - base * n;
+  const start = ((offset % n) + n) % n;
+  return Array.from({ length: n }, (_, i) => {
+    // The `remainder` people starting at `start` (wrapping) each get one extra.
+    const pos = (i - start + n) % n;
+    return base + (pos < remainder ? 1 : 0);
   });
 };
 
@@ -57,7 +62,7 @@ export const computeStats = (state: AppState): SplitStats => {
   let assignedCents = 0;
   let unassignedItemCount = 0;
 
-  const itemAdjustments: ItemAdjustment[] = state.items.map((item) => {
+  const itemAdjustments: ItemAdjustment[] = state.items.map((item, index) => {
     const adjustedPrice = item.originalPrice * adjustmentFactor;
     const validPersonIds = (state.assignments[item.id] || []).filter(
       (pid) => totalCents[pid] !== undefined,
@@ -65,7 +70,9 @@ export const computeStats = (state: AppState): SplitStats => {
 
     if (validPersonIds.length > 0) {
       const cents = toCents(adjustedPrice);
-      const shares = splitCents(cents, validPersonIds.length);
+      // Rotate leftover-penny recipients by item index so no single person
+      // consistently absorbs the rounding across many odd splits.
+      const shares = splitCents(cents, validPersonIds.length, index);
       validPersonIds.forEach((pid, i) => { totalCents[pid] += shares[i]; });
       assignedCents += cents;
     } else {

@@ -5,6 +5,7 @@ import { analyzeReceipt } from './services/receiptService';
 import { getUser, getUserFirstName, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
 import { Receipt, Check, RotateCcw } from 'lucide-react';
 import { formatCurrency } from './utils/currency';
+import { makeId } from './utils/id';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { UploadStep } from './components/UploadStep';
 import { AnalyzingStep } from './components/AnalyzingStep';
@@ -145,7 +146,7 @@ export default function App() {
       ...prev,
       step: 'splitting',
       receiptImage: null,
-      items: [{ id: crypto.randomUUID(), name: '', quantity: 1, originalPrice: 0 }],
+      items: [{ id: makeId(), name: '', quantity: 1, originalPrice: 0 }],
       total: 0,
       discount: 0,
       assignments: {},
@@ -213,7 +214,7 @@ export default function App() {
   const addItem = () => {
     setState(prev => ({
       ...prev,
-      items: [...prev.items, { id: crypto.randomUUID(), name: '', quantity: 1, originalPrice: 0 }],
+      items: [...prev.items, { id: makeId(), name: '', quantity: 1, originalPrice: 0 }],
     }));
   };
 
