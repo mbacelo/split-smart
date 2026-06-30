@@ -64,7 +64,7 @@ Thin wrapper over Google Identity Services (script tag in [index.html](index.htm
 
 ### Person colors ([components/personColors.ts](components/personColors.ts))
 
-Person colors are stored as strings (e.g. `"blue"`). Tailwind class strings are written out **in full** here (not interpolated) because `bg-${color}-100` would be purged at build time. If you add a palette color, add its full class set here **and** to the `safelist` in [tailwind.config.js](tailwind.config.js).
+Person colors are stored as strings (e.g. `"blue"`). Tailwind class strings are written out **in full** here (not interpolated) because `bg-${color}-100` would be purged at build time. If you add a palette color, add its full class set here **and** to the `@source inline(...)` safelist in [index.css](index.css).
 
 ## Conventions
 

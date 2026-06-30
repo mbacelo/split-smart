@@ -33,7 +33,8 @@ On Vercel, set the same variables in **Project Settings → Environment Variable
 | --- | --- | --- |
 | `AI_PROVIDER` | server | Active provider (`openai`). |
 | `OPENAI_API_KEY` | server | OpenAI key. **Secret.** |
-| `OPENAI_MODEL` | server | Vision model, e.g. `gpt-4o-mini`. |
+| `OPENAI_MODEL` | server | Vision model, e.g. `gpt-5.4-mini`. |
+| `OPENAI_REASONING_EFFORT` | server | Optional. GPT-5.x reasoning effort: `none`\|`minimal`\|`low`\|`medium`\|`high`\|`xhigh`. Omit for model default. |
 | `GOOGLE_CLIENT_ID` | server | Verifies the ID token audience. |
 | `ALLOWED_EMAILS` | server | Comma-separated allowlist of emails. |
 | `VITE_GOOGLE_CLIENT_ID` | client | Same client ID, exposed to the browser for the Sign-In button (client IDs are public). |

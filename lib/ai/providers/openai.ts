@@ -31,10 +31,15 @@ const RECEIPT_SCHEMA = {
 export const openAIProvider: AIProvider = {
   async analyzeReceipt(cleanBase64: string, mimeType: string): Promise<ReceiptAnalysis> {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const model = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+    // GPT-5.x reasoning effort: none|minimal|low|medium|high|xhigh. Unset = model default.
+    const reasoningEffort = process.env.OPENAI_REASONING_EFFORT as
+      | OpenAI.ReasoningEffort
+      | undefined;
 
     const response = await client.chat.completions.create({
       model,
+      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       messages: [
         {
           role: "user",

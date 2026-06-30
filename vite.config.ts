@@ -2,6 +2,7 @@ import path from 'path';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // Server-side env vars the API function needs. These must NOT be exposed to the
 // client bundle — they live only in the Node dev process (and, in production, in
@@ -10,6 +11,7 @@ const SERVER_ENV_KEYS = [
   'AI_PROVIDER',
   'OPENAI_API_KEY',
   'OPENAI_MODEL',
+  'OPENAI_REASONING_EFFORT',
   'GOOGLE_CLIENT_ID',
   'ALLOWED_EMAILS',
 ] as const;
@@ -91,7 +93,7 @@ export default defineConfig(({ mode }) => {
     // `npm run dev` serves the frontend AND /api together (see devApiPlugin).
     // The AI key is NEVER injected into the client bundle — it lives only in
     // the serverless function (api/analyze-receipt.ts), run in-process here.
-    plugins: [react(), devApiPlugin(env)],
+    plugins: [react(), tailwindcss(), devApiPlugin(env)],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

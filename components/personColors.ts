@@ -3,9 +3,9 @@
 // Why this exists: components build their look from `person.color` (a string like
 // "blue"). Writing `bg-${color}-100` directly would be invisible to Tailwind's
 // build-time purge and the class would be dropped. Listing the full class strings
-// here (and in tailwind.config.js `safelist`) keeps them in the build and makes the
-// exact classes greppable. Both lists are driven by the same palette in
-// COLOR_PALETTE below — keep them in sync if you add a color.
+// here (and in the `@source inline(...)` safelist in index.css) keeps them in the
+// build and makes the exact classes greppable. Both lists are driven by the same
+// palette in COLOR_PALETTE below — keep them in sync if you add a color.
 
 import { Person } from '../types';
 

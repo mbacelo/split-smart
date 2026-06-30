@@ -1,6 +1,16 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/*
+ * Person palette safelist. Cards/avatars build classes from `person.color` at
+ * runtime (see components/personColors.ts), so Tailwind can't see them in the
+ * markup. v4 replaces the old `safelist` config option with @source inline().
+ * Brace expansion enumerates the same class set the old tailwind.config.js did:
+ *   ring|border|bg|text-{color}-{shade}
+ */
+@source inline("ring-{blue,green,purple,orange,pink,indigo,rose,amber,emerald,cyan}-500");
+@source inline("border-{blue,green,purple,orange,pink,indigo,rose,amber,emerald,cyan}-{200,500,600}");
+@source inline("bg-{blue,green,purple,orange,pink,indigo,rose,amber,emerald,cyan}-{50,100,400,500,600}");
+@source inline("text-{blue,green,purple,orange,pink,indigo,rose,amber,emerald,cyan}-{600,900}");
 
 body {
   font-family: 'Inter', sans-serif;
