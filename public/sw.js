@@ -1,9 +1,12 @@
-const CACHE_NAME = 'splitsmart-v14';
+const CACHE_NAME = 'splitsmart-v15';
 const urlsToCache = [
   './',
   './index.html',
   './manifest.json',
-  './app-image.png'
+  './favicon-32.png',
+  './favicon-48.png',
+  './app-icon-192.png',
+  './app-icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
