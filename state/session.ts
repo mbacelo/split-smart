@@ -6,7 +6,7 @@
 // call. People live under their own key so resetting a session keeps them.
 
 import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from '../types';
-import { getUserFirstName } from '../services/auth';
+import { getUserFirstName, getUserPicture } from '../services/auth';
 
 const PEOPLE_KEY = 'splitSmart_people';
 const SESSION_KEY = 'splitSmart_session';
@@ -35,18 +35,18 @@ interface PersistedSession {
 
 // Two people is the minimum needed to split; users add more as needed via the
 // quick-add / inline edit controls in the splitting view.
-export const getInitialPeople = (firstName?: string): Person[] => [
-  { id: 'p1', name: firstName?.trim() || 'Person #1', color: 'blue' },
+export const getInitialPeople = (firstName?: string, picture?: string): Person[] => [
+  { id: 'p1', name: firstName?.trim() || 'Person #1', color: 'blue', ...(picture ? { photo: picture } : {}) },
   { id: 'p2', name: 'Person #2', color: 'green' },
 ];
 
-const loadPeople = (firstName?: string): Person[] => {
+const loadPeople = (firstName?: string, picture?: string): Person[] => {
   try {
     const saved = localStorage.getItem(PEOPLE_KEY);
     const parsed = saved ? (JSON.parse(saved) as Person[]) : null;
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : getInitialPeople(firstName);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : getInitialPeople(firstName, picture);
   } catch {
-    return getInitialPeople(firstName);
+    return getInitialPeople(firstName, picture);
   }
 };
 
@@ -73,7 +73,7 @@ const loadSession = (): PersistedSession | null => {
 
 /** Build the app's initial state, rehydrating people and any saved session. */
 export const makeInitialState = (): AppState => {
-  const people = loadPeople(getUserFirstName() ?? undefined);
+  const people = loadPeople(getUserFirstName() ?? undefined, getUserPicture() ?? undefined);
   const session = loadSession();
   // Only restore the image when we actually have a session to attach it to,
   // otherwise a stale image could outlive its cleared session.

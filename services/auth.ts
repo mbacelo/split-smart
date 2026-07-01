@@ -132,6 +132,9 @@ export const getUserFirstName = (): string | null => {
   return n.split(/\s+/)[0];
 };
 
+/** The signed-in user's Google profile picture URL, or null. */
+export const getUserPicture = (): string | null => user?.picture ?? null;
+
 /** True while a silent re-auth is expected on launch (show a loading state). */
 export const isAuthResolving = (): boolean => authResolving;
 

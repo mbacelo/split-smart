@@ -483,7 +483,7 @@ export default function App() {
   };
 
   const handleResetPeople = () => {
-    const defaultPeople = getInitialPeople(getUserFirstName() ?? undefined);
+    const defaultPeople = getInitialPeople(getUserFirstName() ?? undefined, getUser()?.picture ?? undefined);
     setState(prev => ({ ...prev, people: defaultPeople, assignments: {}, unitWeights: {} }));
     clearPeople();
   };
