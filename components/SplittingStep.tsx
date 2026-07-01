@@ -4,6 +4,7 @@ import { SplitStats, ItemAdjustment, splitCentsWeighted } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses, defaultPersonName } from './personColors';
 import { PersonCard } from './PersonCard';
+import { PersonAvatar } from './PersonAvatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Check, Plus, X, Trash2, Pencil, Share, Users, Receipt, RotateCcw, Scale, Minus, Contact } from 'lucide-react';
 import { contactsPickerSupported } from '../utils/contacts';
@@ -491,13 +492,14 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                             const p = state.people.find((person) => person.id === pid);
                             if (!p) return null;
                             return (
-                              <div
+                              <PersonAvatar
                                 key={pid}
+                                photo={p.photo}
                                 className={`w-5 h-5 rounded-full border border-white flex items-center justify-center text-[9px] text-white font-bold uppercase shadow-sm ${getPersonColorClass(pid)}`}
                                 title={p.name}
                               >
                                 {p.name.charAt(0)}
-                              </div>
+                              </PersonAvatar>
                             );
                           })}
                         </div>
@@ -809,9 +811,14 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 className={`flex flex-col items-center flex-shrink-0 transition-all duration-200 ${isActive ? 'opacity-100 transform -translate-y-1' : 'opacity-60'}`}
                 style={{ minWidth: '70px' }}
               >
-                <div className={`relative w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm mb-1 border-2 transition-colors
-                    ${isActive ? `${pc.borderStrong} ${pc.bgSolid} shadow-md` : `border-transparent ${pc.bgSolidMuted}`}`}>
-                  {person.name.charAt(0)}
+                <div className="relative mb-1">
+                  <PersonAvatar
+                    photo={person.photo}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm border-2 transition-colors
+                      ${isActive ? `${pc.borderStrong} ${pc.bgSolid} shadow-md` : `border-transparent ${pc.bgSolidMuted}`}`}
+                  >
+                    {person.name.charAt(0)}
+                  </PersonAvatar>
                   {isActive && (
                     <div className={`absolute -top-1 -right-1 w-4 h-4 ${pc.bgSolidStrong} rounded-full border-2 border-white flex items-center justify-center`}>
                       <Check className="w-2.5 h-2.5 text-white" />
@@ -1182,9 +1189,12 @@ const UnitAllocationPanel: React.FC<{
             const share = shareByPid[person.id] ?? 0;
             return (
               <div key={person.id} className="flex items-center gap-2">
-                <div className={`w-6 h-6 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-[11px] border ${c.borderSoft}`}>
+                <PersonAvatar
+                  photo={person.photo}
+                  className={`w-6 h-6 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-[11px] border ${c.borderSoft}`}
+                >
                   {person.name.trim().charAt(0).toUpperCase() || '?'}
-                </div>
+                </PersonAvatar>
                 <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700">{person.name}</span>
                 <span className={`text-xs font-semibold w-16 text-right ${w > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
                   {w > 0 ? formatCurrency(share / 100) : '—'}
@@ -1243,9 +1253,12 @@ const PersonEditRow: React.FC<{
   const isNameEmpty = person.name.trim().length === 0;
   return (
     <div className="flex items-center gap-3 group">
-      <div className={`w-10 h-10 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-sm border ${c.borderSoft} shadow-sm`}>
+      <PersonAvatar
+        photo={person.photo}
+        className={`w-10 h-10 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-sm border ${c.borderSoft} shadow-sm`}
+      >
         {person.name.trim().charAt(0).toUpperCase() || '?'}
-      </div>
+      </PersonAvatar>
       <input
         type="text"
         aria-label="Person name"

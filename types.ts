@@ -15,6 +15,11 @@ export interface Person {
   id: string;
   name: string;
   color: string;
+  // Optional avatar as a data URL, only ever set when a person is imported from
+  // the OS contacts picker and that contact had a photo. Downscaled to a small
+  // thumbnail (see utils/contacts) so it's cheap to keep inline in localStorage.
+  // When absent, the UI falls back to the colored initial/icon.
+  photo?: string;
 }
 
 export interface AssignmentState {

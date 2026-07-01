@@ -3,6 +3,7 @@ import { Person } from '../types';
 import { User } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses } from './personColors';
+import { PersonAvatar } from './PersonAvatar';
 
 interface PersonCardProps {
   person: Person;
@@ -30,9 +31,12 @@ export const PersonCard: React.FC<PersonCardProps> = ({
         }`}
     >
       <div className="flex justify-between items-start w-full">
-        <div className={`p-1.5 rounded-full ${c.bgSoft} ${c.text}`}>
+        <PersonAvatar
+          photo={person.photo}
+          className={`w-8 h-8 rounded-full flex items-center justify-center ${c.bgSoft} ${c.text}`}
+        >
           <User className="w-5 h-5" />
-        </div>
+        </PersonAvatar>
         {isSelected && (
           <span className={`text-[10px] font-bold uppercase tracking-wider ${c.text} bg-white px-2 py-0.5 rounded-full shadow-sm`}>
             Active
