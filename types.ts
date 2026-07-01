@@ -22,6 +22,16 @@ export interface AssignmentState {
   [itemId: string]: string[];
 }
 
+export interface UnitWeightState {
+  // itemId -> { personId -> weight }. Sparse: only items the user has
+  // explicitly weighted appear here, and within one item only the people
+  // given an explicit weight. Anyone assigned but absent gets an implicit
+  // weight of 1 (equal share), so an empty/missing entry == the plain
+  // equal-split behavior. Weights are relative (a 3:2 split of the line
+  // total), NOT required to sum to the item's quantity.
+  [itemId: string]: { [personId: string]: number };
+}
+
 export interface AppState {
   step: 'upload' | 'analyzing' | 'splitting';
   receiptImage: string | null;
@@ -36,6 +46,11 @@ export interface AppState {
   tip: number;
   tipMode: 'percent' | 'amount';
   assignments: AssignmentState;
+  // Optional per-item, per-person consumption weights for splitting a line
+  // proportionally instead of equally (e.g. 3 of 5 beers). Additive on top of
+  // `assignments`: an item absent here splits equally across its assignees, as
+  // before. See UnitWeightState and computeStats.
+  unitWeights: UnitWeightState;
   people: Person[];
   error: string | null;
   // Manual entry mode: no receipt was scanned, so there is no authoritative

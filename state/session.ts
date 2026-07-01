@@ -5,7 +5,7 @@
 // — easy to trigger on mobile — doesn't wipe work and force another paid AI
 // call. People live under their own key so resetting a session keeps them.
 
-import { AppState, Person, AssignmentState, ReceiptItem } from '../types';
+import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from '../types';
 import { getUserFirstName } from '../services/auth';
 
 const PEOPLE_KEY = 'splitSmart_people';
@@ -17,7 +17,7 @@ const IMAGE_KEY = 'splitSmart_sessionImage';
 
 // Bump when the persisted session shape changes so stale data is discarded
 // rather than rehydrated into an incompatible state.
-const SESSION_VERSION = 5;
+const SESSION_VERSION = 6;
 
 interface PersistedSession {
   v: number;
@@ -28,6 +28,7 @@ interface PersistedSession {
   tip?: number;
   tipMode?: AppState['tipMode'];
   assignments: AssignmentState;
+  unitWeights?: UnitWeightState;
   manualEntry?: boolean;
   manualTotalOverride?: number | null;
 }
@@ -85,6 +86,7 @@ export const makeInitialState = (): AppState => {
     tip: session?.tip ?? 0,
     tipMode: session?.tipMode ?? 'percent',
     assignments: session?.assignments ?? {},
+    unitWeights: session?.unitWeights ?? {},
     people,
     error: null,
     manualEntry: session?.manualEntry ?? false,
@@ -121,6 +123,7 @@ export const saveSession = (state: AppState): void => {
       tip: state.tip,
       tipMode: state.tipMode,
       assignments: state.assignments,
+      unitWeights: state.unitWeights,
       manualEntry: state.manualEntry,
       manualTotalOverride: state.manualTotalOverride,
     };

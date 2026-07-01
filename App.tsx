@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { AppState, Person, AssignmentState, ReceiptItem } from './types';
+import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
 import { getUser, getUserFirstName, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
 import { Receipt, Check, RotateCcw, AlertCircle, LogOut } from 'lucide-react';
@@ -31,11 +31,11 @@ export default function App() {
   const [isEditingItems, setIsEditingItems] = useState(false);
   // Snapshot of items/assignments taken when edit mode opens. Edits apply live,
   // so Cancel restores this snapshot; Done (commit) just discards it.
-  const editSnapshot = useRef<Pick<AppState, 'items' | 'assignments'> | null>(null);
+  const editSnapshot = useRef<Pick<AppState, 'items' | 'assignments' | 'unitWeights'> | null>(null);
   // Same idea for the People list: snapshot people + assignments when inline
   // people-edit mode opens, so Cancel can revert renames/removes/adds (which
   // otherwise persist live).
-  const peopleSnapshot = useRef<Pick<AppState, 'people' | 'assignments'> | null>(null);
+  const peopleSnapshot = useRef<Pick<AppState, 'people' | 'assignments' | 'unitWeights'> | null>(null);
 
   // Auth: subscribe to sign-in state from the Google Identity wrapper.
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
@@ -147,7 +147,7 @@ export default function App() {
   // rather than re-serialized to localStorage on every assignment tap/keystroke.
   useEffect(() => {
     saveSession(state);
-  }, [state.step, state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.manualTotalOverride]);
+  }, [state.step, state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.unitWeights, state.manualTotalOverride]);
 
   // Persist the receipt image separately, only when it actually changes.
   useEffect(() => {
@@ -163,7 +163,7 @@ export default function App() {
   }, [toast]);
 
   // Calculate stats derived from state
-  const stats = useMemo(() => computeStats(state), [state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.people, state.manualEntry, state.manualTotalOverride]);
+  const stats = useMemo(() => computeStats(state), [state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.unitWeights, state.people, state.manualEntry, state.manualTotalOverride]);
   const { personTotals, effectiveTotal, unassignedTotal } = stats;
 
   const handleImageSelected = async (base64: string) => {
@@ -180,6 +180,7 @@ export default function App() {
         tip: 0,
         tipMode: 'percent',
         assignments: {}, // Reset assignments
+        unitWeights: {},
         manualEntry: false,
         manualTotalOverride: null,
       }));
@@ -206,6 +207,7 @@ export default function App() {
       tip: 0,
       tipMode: 'percent',
       assignments: {},
+      unitWeights: {},
       error: null,
       manualEntry: true,
       manualTotalOverride: null,
@@ -249,6 +251,51 @@ export default function App() {
     });
   };
 
+  // Set one person's per-unit consumption weight on an item (e.g. 3 of 5 beers).
+  // Weights are relative — they divide the line total proportionally rather than
+  // needing to sum to the quantity. Setting a weight implies the person is on the
+  // item, so we also ensure they're assigned. A weight of 0 means "consumed none"
+  // → drop them from both the weights and the assignment. Empty weight entries are
+  // pruned so an item with no explicit weights falls back to a plain equal split.
+  const setUnitWeight = (itemId: string, personId: string, weight: number) => {
+    const w = Math.max(0, Math.round(weight || 0));
+    setState(prev => {
+      const currentAssigned = prev.assignments[itemId] || [];
+      const itemWeights = { ...(prev.unitWeights[itemId] || {}) };
+      let assignedForItem: string[];
+
+      if (w === 0) {
+        delete itemWeights[personId];
+        assignedForItem = currentAssigned.filter(id => id !== personId);
+      } else {
+        itemWeights[personId] = w;
+        assignedForItem = currentAssigned.includes(personId)
+          ? currentAssigned
+          : [...currentAssigned, personId];
+      }
+
+      const nextUnitWeights = { ...prev.unitWeights };
+      if (Object.keys(itemWeights).length > 0) nextUnitWeights[itemId] = itemWeights;
+      else delete nextUnitWeights[itemId];
+
+      return {
+        ...prev,
+        assignments: { ...prev.assignments, [itemId]: assignedForItem },
+        unitWeights: nextUnitWeights,
+      };
+    });
+  };
+
+  // Drop an item's per-unit weights, returning it to a plain equal split across
+  // whoever is assigned (the assignment itself is left untouched).
+  const clearUnitWeights = (itemId: string) => {
+    setState(prev => {
+      if (!prev.unitWeights[itemId]) return prev;
+      const { [itemId]: _removed, ...rest } = prev.unitWeights;
+      return { ...prev, unitWeights: rest };
+    });
+  };
+
   // Item editing. Edits are applied live to state.items, so they recompute
   // totals (computeStats useMemo) and persist (saveSession) automatically.
   // Note: quantity is display/summary only — originalPrice is already the line
@@ -276,12 +323,14 @@ export default function App() {
 
   const deleteItem = (id: string) => {
     setState(prev => {
-      // Drop the item and any assignments referencing it so no orphan keys linger.
+      // Drop the item and any assignments/weights referencing it so no orphan keys linger.
       const { [id]: _removed, ...remainingAssignments } = prev.assignments;
+      const { [id]: _removedWeights, ...remainingWeights } = prev.unitWeights;
       return {
         ...prev,
         items: prev.items.filter(item => item.id !== id),
         assignments: remainingAssignments,
+        unitWeights: remainingWeights,
       };
     });
   };
@@ -302,12 +351,16 @@ export default function App() {
         Object.entries(prev.assignments).forEach(([itemId, ids]) => {
           if (keptIds.has(itemId)) assignments[itemId] = ids as string[];
         });
-        return { ...prev, items: kept, assignments };
+        const unitWeights: UnitWeightState = {};
+        Object.entries(prev.unitWeights).forEach(([itemId, weights]) => {
+          if (keptIds.has(itemId)) unitWeights[itemId] = weights as { [personId: string]: number };
+        });
+        return { ...prev, items: kept, assignments, unitWeights };
       });
       editSnapshot.current = null;
       setIsEditingItems(false);
     } else {
-      editSnapshot.current = { items: state.items, assignments: state.assignments };
+      editSnapshot.current = { items: state.items, assignments: state.assignments, unitWeights: state.unitWeights };
       setIsEditingItems(true);
     }
   };
@@ -316,7 +369,7 @@ export default function App() {
   const cancelEditItems = () => {
     if (editSnapshot.current) {
       const snap = editSnapshot.current;
-      setState(prev => ({ ...prev, items: snap.items, assignments: snap.assignments }));
+      setState(prev => ({ ...prev, items: snap.items, assignments: snap.assignments, unitWeights: snap.unitWeights }));
       editSnapshot.current = null;
     }
     setIsEditingItems(false);
@@ -326,7 +379,7 @@ export default function App() {
   // revert. Renames/removes/adds save live, so we capture assignments too (a
   // removal prunes them).
   const startEditPeople = () => {
-    peopleSnapshot.current = { people: state.people, assignments: state.assignments };
+    peopleSnapshot.current = { people: state.people, assignments: state.assignments, unitWeights: state.unitWeights };
   };
 
   // Abandon people edits: restore the snapshot to state and re-persist it,
@@ -334,7 +387,7 @@ export default function App() {
   const cancelEditPeople = () => {
     const snap = peopleSnapshot.current;
     if (snap) {
-      setState(prev => ({ ...prev, people: snap.people, assignments: snap.assignments }));
+      setState(prev => ({ ...prev, people: snap.people, assignments: snap.assignments, unitWeights: snap.unitWeights }));
       savePeople(snap.people);
       peopleSnapshot.current = null;
     }
@@ -353,6 +406,7 @@ export default function App() {
       tip: 0,
       tipMode: 'percent',
       assignments: {},
+      unitWeights: {},
       error: null,
       manualEntry: false,
       manualTotalOverride: null,
@@ -394,13 +448,20 @@ export default function App() {
       const filteredIds = (personIds as string[]).filter(pid => remainingIds.has(pid));
       if (filteredIds.length > 0) newAssignments[itemId] = filteredIds;
     });
-    setState(prev => ({ ...prev, people: newPeople, assignments: newAssignments }));
+    // Prune the removed person from any per-item weights too, dropping now-empty entries.
+    const newUnitWeights: UnitWeightState = {};
+    Object.entries(state.unitWeights).forEach(([itemId, weights]) => {
+      const kept: { [personId: string]: number } = {};
+      Object.entries(weights as { [personId: string]: number }).forEach(([pid, w]) => { if (remainingIds.has(pid)) kept[pid] = w; });
+      if (Object.keys(kept).length > 0) newUnitWeights[itemId] = kept;
+    });
+    setState(prev => ({ ...prev, people: newPeople, assignments: newAssignments, unitWeights: newUnitWeights }));
     savePeople(newPeople);
   };
 
   const handleResetPeople = () => {
     const defaultPeople = getInitialPeople(getUserFirstName() ?? undefined);
-    setState(prev => ({ ...prev, people: defaultPeople, assignments: {} }));
+    setState(prev => ({ ...prev, people: defaultPeople, assignments: {}, unitWeights: {} }));
     clearPeople();
   };
 
@@ -475,7 +536,12 @@ export default function App() {
         assignedItems.forEach(item => {
           const shareCount = (state.assignments[item.id] || []).length;
           const qtyStr = item.quantity > 1 ? `${item.quantity}× ` : ``;
-          const priceStr = shareCount > 1 ? ` (split ${shareCount} ways)` : ``;
+          const weight = state.unitWeights[item.id]?.[person.id];
+          // Weighted line: show this person's units out of the quantity, e.g.
+          // "(3 of 5)". Otherwise fall back to the plain "split N ways" note.
+          const priceStr = weight !== undefined
+            ? ` (${weight} of ${item.quantity})`
+            : shareCount > 1 ? ` (split ${shareCount} ways)` : ``;
           text += ` • ${qtyStr}${item.name}${priceStr}\n`;
         });
         text += `\n`;
@@ -732,6 +798,9 @@ export default function App() {
             activePerson={activePerson}
             onToggleAssignment={toggleAssignment}
             onToggleAllAssignment={toggleAllAssignment}
+            unitWeights={state.unitWeights}
+            onSetUnitWeight={setUnitWeight}
+            onClearUnitWeights={clearUnitWeights}
             onSelectPerson={setActivePersonId}
             onAddPerson={handleAddPerson}
             onRenamePerson={renamePerson}

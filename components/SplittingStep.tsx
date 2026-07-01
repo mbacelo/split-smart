@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Person, ReceiptItem } from '../types';
-import { SplitStats } from '../state/stats';
+import { AppState, Person, ReceiptItem, UnitWeightState } from '../types';
+import { SplitStats, ItemAdjustment, splitCentsWeighted } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses, defaultPersonName } from './personColors';
 import { PersonCard } from './PersonCard';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Check, Plus, X, Trash2, Pencil, Share, Users, Receipt, RotateCcw } from 'lucide-react';
+import { Check, Plus, X, Trash2, Pencil, Share, Users, Receipt, RotateCcw, Scale, Minus } from 'lucide-react';
 
 interface EditState { active: boolean; value: number; }
 // Tip editing also tracks the unit (percent vs flat amount) being entered.
@@ -25,6 +25,10 @@ interface SplittingStepProps {
   activePerson: Person | undefined;
   onToggleAssignment: (itemId: string) => void;
   onToggleAllAssignment: (itemId: string) => void;
+  // Per-unit consumption weights (multi-quantity items only). See UnitWeightState.
+  unitWeights: UnitWeightState;
+  onSetUnitWeight: (itemId: string, personId: string, weight: number) => void;
+  onClearUnitWeights: (itemId: string) => void;
   onSelectPerson: (personId: string) => void;
   onAddPerson: () => void;
   onRenamePerson: (personId: string, name: string) => void;
@@ -72,6 +76,9 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   activePerson,
   onToggleAssignment,
   onToggleAllAssignment,
+  unitWeights,
+  onSetUnitWeight,
+  onClearUnitWeights,
   onSelectPerson,
   onAddPerson,
   onRenamePerson,
@@ -142,6 +149,10 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   // Confirm gate for restoring the default people list — a destructive action
   // (clears the list and assignments), so it asks before wiping.
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+
+  // Which item (if any) has its per-unit allocation panel expanded. Single-open:
+  // opening one collapses the others so the item list stays compact.
+  const [expandedUnitItemId, setExpandedUnitItemId] = useState<string | null>(null);
 
   // Enter edit mode (snapshotting people so Cancel can revert) or commit and
   // leave. Mirrors the items list's Edit/Done + Cancel affordance.
@@ -428,10 +439,15 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   const activeColor = activePerson?.color;
                   const ac = activeColor ? getColorClasses(activeColor) : null;
                   const bgClass = isAssignedToActive && ac ? ac.bgSubtle : 'hover:bg-slate-50';
+                  // Per-unit weighting only makes sense for multi-quantity lines.
+                  const canWeightByUnit = item.quantity > 1;
+                  const itemWeights = unitWeights[item.id];
+                  const hasWeights = !!itemWeights && Object.keys(itemWeights).length > 0;
+                  const isUnitExpanded = expandedUnitItemId === item.id;
 
                   return (
+                    <div key={item.id} className={`${isUnitExpanded ? 'bg-slate-50/60' : ''}`}>
                     <div
-                      key={item.id}
                       onClick={() => onToggleAssignment(item.id)}
                       className={`group flex items-center justify-between p-4 cursor-pointer transition-colors duration-200 ${bgClass} ${isUnassigned ? 'border-l-4 border-l-amber-300' : 'border-l-4 border-l-transparent'}`}
                     >
@@ -480,19 +496,48 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                             <p className="text-xs text-slate-400 line-through">{formatCurrency(item.originalPrice)}</p>
                           )}
                         </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onToggleAllAssignment(item.id); }}
-                          title={allAssigned ? 'Remove everyone from this item' : 'Split this item across everyone'}
-                          aria-pressed={allAssigned}
-                          className={`inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 transition-colors active:scale-95
-                            ${allAssigned
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}
-                        >
-                          <Users className="w-3 h-3" />
-                          All
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {canWeightByUnit && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setExpandedUnitItemId((cur) => (cur === item.id ? null : item.id)); }}
+                              title="Split by units consumed"
+                              aria-pressed={hasWeights || isUnitExpanded}
+                              className={`inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 transition-colors active:scale-95
+                                ${hasWeights || isUnitExpanded
+                                  ? 'bg-amber-500 text-white'
+                                  : 'bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600'}`}
+                            >
+                              <Scale className="w-3 h-3" />
+                              By unit
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onToggleAllAssignment(item.id); }}
+                            title={allAssigned ? 'Remove everyone from this item' : 'Split this item across everyone'}
+                            aria-pressed={allAssigned}
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 transition-colors active:scale-95
+                              ${allAssigned
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                          >
+                            <Users className="w-3 h-3" />
+                            All
+                          </button>
+                        </div>
                       </div>
+                    </div>
+
+                    {isUnitExpanded && canWeightByUnit && (
+                      <UnitAllocationPanel
+                        item={item}
+                        people={state.people}
+                        assignedPersonIds={assignedPersonIds}
+                        itemWeights={itemWeights}
+                        hasWeights={hasWeights}
+                        onSetUnitWeight={onSetUnitWeight}
+                        onClearUnitWeights={onClearUnitWeights}
+                      />
+                    )}
                     </div>
                   );
                 })}
@@ -1035,6 +1080,107 @@ const EditToggle: React.FC<{ active: boolean; onClick: () => void; idleLabel?: s
     <span>{active ? 'Done' : idleLabel}</span>
   </button>
 );
+
+// Inline per-unit allocation panel for a multi-quantity item. Lists each person
+// with a small stepper for how many units they consumed, and a live preview of
+// the resulting share. Weights are relative — the line total divides in
+// proportion — so they need not sum to the quantity. A person left at 0 is
+// simply not on the item. "Reset to equal" drops all weights back to a plain
+// even split. Preview uses the same splitCentsWeighted as computeStats so the
+// numbers shown match the totals exactly.
+const UnitAllocationPanel: React.FC<{
+  item: ItemAdjustment;
+  people: Person[];
+  assignedPersonIds: string[];
+  itemWeights: { [personId: string]: number } | undefined;
+  hasWeights: boolean;
+  onSetUnitWeight: (itemId: string, personId: string, weight: number) => void;
+  onClearUnitWeights: (itemId: string) => void;
+}> = ({ item, people, assignedPersonIds, itemWeights, hasWeights, onSetUnitWeight, onClearUnitWeights }) => {
+  // Effective weight shown per person: explicit weight if set, else 1 for an
+  // assigned person (their equal share), else 0 (not on the item).
+  const assigned = new Set(assignedPersonIds);
+  const weightFor = (pid: string) => itemWeights?.[pid] ?? (assigned.has(pid) ? 1 : 0);
+
+  // Live preview: split the item's adjusted cents by the current weights across
+  // the people who have a positive weight, mirroring computeStats.
+  const participants = people.filter((p) => weightFor(p.id) > 0);
+  const cents = Math.round(item.adjustedPrice * 100);
+  const shareCents = splitCentsWeighted(cents, participants.map((p) => weightFor(p.id)));
+  const shareByPid: Record<string, number> = {};
+  participants.forEach((p, i) => { shareByPid[p.id] = shareCents[i]; });
+
+  return (
+    <div className="px-4 pb-4 pt-1 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+      <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 uppercase tracking-wide">
+            <Scale className="w-3.5 h-3.5" />
+            Units consumed
+          </div>
+          {hasWeights && (
+            <button
+              onClick={() => onClearUnitWeights(item.id)}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-indigo-600 transition-colors"
+              title="Split this item equally again"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Reset to equal
+            </button>
+          )}
+        </div>
+        <div className="space-y-2">
+          {people.map((person) => {
+            const c = getColorClasses(person.color);
+            const w = weightFor(person.id);
+            const share = shareByPid[person.id] ?? 0;
+            return (
+              <div key={person.id} className="flex items-center gap-2">
+                <div className={`w-6 h-6 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-[11px] border ${c.borderSoft}`}>
+                  {person.name.trim().charAt(0).toUpperCase() || '?'}
+                </div>
+                <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700">{person.name}</span>
+                <span className={`text-xs font-semibold w-16 text-right ${w > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                  {w > 0 ? formatCurrency(share / 100) : '—'}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => onSetUnitWeight(item.id, person.id, w - 1)}
+                    disabled={w <= 0}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-90"
+                    aria-label={`Fewer units for ${person.name}`}
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={w || ''}
+                    placeholder="0"
+                    onChange={(e) => onSetUnitWeight(item.id, person.id, parseInt(e.target.value, 10) || 0)}
+                    aria-label={`Units for ${person.name}`}
+                    className="w-10 text-center bg-white border border-slate-200 rounded-lg py-1 font-bold text-slate-700 text-sm focus:ring-2 focus:ring-amber-400 outline-none"
+                  />
+                  <button
+                    onClick={() => onSetUnitWeight(item.id, person.id, w + 1)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors active:scale-90"
+                    aria-label={`More units for ${person.name}`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-slate-400 leading-snug">
+          Units split this {item.quantity}× item proportionally. They don't have to add up to {item.quantity}.
+        </p>
+      </div>
+    </div>
+  );
+};
 
 // A single editable person row used in both the desktop column and the mobile
 // bar's edit mode: colored avatar initial, a live name field, and a remove

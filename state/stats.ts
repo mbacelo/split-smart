@@ -44,6 +44,25 @@ const splitCents = (cents: number, n: number, offset = 0): number[] => {
   });
 };
 
+// Split `cents` across people in proportion to `weights`, handing leftover
+// pennies to the largest fractional remainders (tie-broken by index) so the
+// parts sum back to `cents` exactly — the weighted analogue of splitCents.
+// Used for per-unit consumption (e.g. 3 of 5 beers → a 3:2 split of the line).
+export const splitCentsWeighted = (cents: number, weights: number[]): number[] => {
+  const totalWeight = weights.reduce((a, w) => a + w, 0);
+  if (totalWeight <= 0) return weights.map(() => 0);
+  const exact = weights.map((w) => (cents * w) / totalWeight);
+  const floors = exact.map(Math.floor);
+  const leftover = cents - floors.reduce((a, f) => a + f, 0);
+  // Hand the leftover pennies to the largest fractional parts, tie-broken by index.
+  const order = exact
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  const shares = [...floors];
+  for (let k = 0; k < leftover; k++) shares[order[k].i]++;
+  return shares;
+};
+
 export const computeStats = (state: AppState): SplitStats => {
   const itemsSum = state.items.reduce((sum, item) => sum + item.originalPrice, 0);
   // In manual entry there is no scanned receipt total, so the base total tracks
@@ -80,9 +99,17 @@ export const computeStats = (state: AppState): SplitStats => {
 
     if (validPersonIds.length > 0) {
       const cents = toCents(adjustedPrice);
-      // Rotate leftover-penny recipients by item index so no single person
-      // consistently absorbs the rounding across many odd splits.
-      const shares = splitCents(cents, validPersonIds.length, index);
+      // Per-unit weights (e.g. 3 of 5 beers). Absent people get an implicit
+      // weight of 1 (equal share), so an item with no weights — or uniform
+      // weights — is identical to a plain equal split.
+      const itemWeights = state.unitWeights[item.id];
+      const weights = validPersonIds.map((pid) => itemWeights?.[pid] ?? 1);
+      const allEqual = weights.every((w) => w === weights[0]);
+      // Common case (equal weights): keep the index-rotated even split so the
+      // leftover-penny bias stays spread and behavior is byte-identical to before.
+      const shares = allEqual
+        ? splitCents(cents, validPersonIds.length, index)
+        : splitCentsWeighted(cents, weights);
       validPersonIds.forEach((pid, i) => { totalCents[pid] += shares[i]; });
       assignedCents += cents;
     } else {
