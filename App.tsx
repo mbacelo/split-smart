@@ -19,6 +19,8 @@ export default function App() {
 
   const [activePersonId, setActivePersonId] = useState<string | null>(state.people[0]?.id || null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  // Gates the Share action when money is still unassigned (see handleShare).
+  const [showUnassignedShareConfirm, setShowUnassignedShareConfirm] = useState(false);
   // Lightweight toast: a message plus a variant that picks the icon/accent.
   // Replaces browser alert()s for transient feedback (copy confirmations, image
   // errors) so notices stay in-app and on-brand.
@@ -41,6 +43,11 @@ export default function App() {
   const signInButtonRef = useRef<HTMLDivElement>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  // Why the sign-in button can't be shown, if it can't: 'config' when the app
+  // is missing its Google client id (a deploy misconfiguration), 'unavailable'
+  // when the Google Identity script never loaded (blocked/offline). Either way
+  // we surface a message so the sign-in screen is never just a dead logo.
+  const [signInError, setSignInError] = useState<'config' | 'unavailable' | null>(null);
 
   useEffect(() => subscribe(() => {
     setUser(getUser());
@@ -88,14 +95,29 @@ export default function App() {
   useEffect(() => {
     if (user || !signInButtonRef.current) return;
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-    if (!clientId) return;
+    if (!clientId) {
+      // No client id configured — GIS can't be initialized at all. Stop the
+      // launch spinner and explain, rather than leaving an empty container.
+      setSignInError('config');
+      setResolvingAuth(false);
+      return;
+    }
+    setSignInError(null);
     let cancelled = false;
+    // Poll for the GIS script for a bounded number of attempts (~6s). If it
+    // never appears (blocked, offline, CSP), give up and show a retry message
+    // instead of polling forever behind a hidden container.
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30;
     const tryRender = () => {
       if (cancelled || !signInButtonRef.current) return;
       if ((window as any).google?.accounts?.id) {
         initGoogleSignIn(clientId, signInButtonRef.current);
-      } else {
+      } else if (attempts++ < MAX_ATTEMPTS) {
         setTimeout(tryRender, 200);
+      } else {
+        setSignInError('unavailable');
+        setResolvingAuth(false);
       }
     };
     tryRender();
@@ -483,7 +505,10 @@ export default function App() {
     }
   };
 
-  const handleShare = async () => {
+  // Share is gated when money is still unassigned: the summary would go out
+  // with a "⚠️ UNASSIGNED" line and the per-person amounts wouldn't add up to
+  // the total. Ask first so the sender notices before it reaches the group.
+  const performShare = async () => {
     const summary = generateSummaryText();
 
     if (navigator.share) {
@@ -513,6 +538,17 @@ export default function App() {
     }
   };
 
+  // Entry point for the Share buttons: if there's meaningfully unassigned money
+  // (same threshold the summary uses to print its UNASSIGNED warning), confirm
+  // first; otherwise share straight away.
+  const handleShare = () => {
+    if (unassignedTotal > 0.05) {
+      setShowUnassignedShareConfirm(true);
+      return;
+    }
+    void performShare();
+  };
+
   const activePerson = state.people.find(p => p.id === activePersonId);
 
   // Gate the whole app behind Google Sign-In.
@@ -537,9 +573,35 @@ export default function App() {
             <span className="text-sm font-medium">Signing you in…</span>
           </div>
         )}
-        {/* Kept mounted (hidden while resolving) so GIS can initialize and run
-            the silent re-auth prompt; revealed if the silent attempt fails. */}
-        <div ref={signInButtonRef} className={resolvingAuth ? 'hidden' : ''} />
+        {/* Kept mounted (hidden while resolving or errored) so GIS can still
+            initialize and run the silent re-auth prompt; revealed if the silent
+            attempt fails. Hidden when we know no button can render. */}
+        <div ref={signInButtonRef} className={resolvingAuth || signInError ? 'hidden' : ''} />
+
+        {/* Fallback so the screen is never a dead logo when sign-in can't load. */}
+        {signInError && !resolvingAuth && (
+          <div className="mt-2 max-w-sm w-full text-center" role="alert">
+            <div className="flex items-start gap-3 text-left bg-red-50 border border-red-200 text-red-700 rounded-xl p-4">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                {signInError === 'config' ? (
+                  <p>Sign-in isn't configured for this deployment. Please contact the app owner.</p>
+                ) : (
+                  <p>Couldn't reach Google Sign-In. Check your connection and try again.</p>
+                )}
+              </div>
+            </div>
+            {signInError === 'unavailable' && (
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-4 inline-flex items-center gap-2 bg-indigo-600 text-white font-semibold py-2.5 px-5 rounded-xl hover:bg-indigo-700 transition-all shadow-sm active:scale-95"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Try again</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -555,6 +617,17 @@ export default function App() {
         variant="danger"
         onConfirm={performReset}
         onCancel={() => setShowResetConfirm(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={showUnassignedShareConfirm}
+        title="Some items aren't assigned"
+        message={`${formatCurrency(unassignedTotal)} isn't assigned to anyone yet, so the shares won't add up to the total. Share the summary anyway?`}
+        confirmLabel="Share Anyway"
+        cancelLabel="Keep Assigning"
+        icon={<AlertCircle className="w-5 h-5" />}
+        onConfirm={() => { setShowUnassignedShareConfirm(false); void performShare(); }}
+        onCancel={() => setShowUnassignedShareConfirm(false)}
       />
 
       {/* Toast Notification */}

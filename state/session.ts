@@ -33,7 +33,7 @@ interface PersistedSession {
 }
 
 // Two people is the minimum needed to split; users add more as needed via the
-// quick-add control in the splitting view or the settings modal.
+// quick-add / inline edit controls in the splitting view.
 export const getInitialPeople = (firstName?: string): Person[] => [
   { id: 'p1', name: firstName?.trim() || 'Person #1', color: 'blue' },
   { id: 'p2', name: 'Person #2', color: 'green' },

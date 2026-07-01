@@ -136,7 +136,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
 
   // Toggles the People list between "tap to select for assigning" and an inline
   // edit mode where each person becomes a name field with a remove button —
-  // putting rename/remove in reach without opening the settings modal.
+  // putting rename/remove in reach right where the people are shown.
   const [isEditingPeople, setIsEditingPeople] = useState(false);
 
   // Confirm gate for restoring the default people list — a destructive action
@@ -161,7 +161,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   };
 
   // When a name is left blank, backfill a default on blur so we never persist an
-  // empty participant (mirrors the settings modal's non-empty rule).
+  // empty participant (matches the non-empty rule applied elsewhere).
   const handleNameBlur = (personId: string, name: string) => {
     if (name.trim() === '') onRenamePerson(personId, defaultPersonName(state.people));
   };
@@ -392,7 +392,30 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 </button>
               </div>
             ) : state.items.length === 0 ? (
-              <div className="p-8 text-center text-slate-500">No items found.</div>
+              // A scan can come back with no items (blurry photo, unusual
+              // receipt). Rather than dead-end on a bare message, drop the user
+              // straight into edit mode — which renders one empty row and the
+              // "Add item" button — so a bad read is recoverable in place.
+              <div className="p-8 text-center flex flex-col items-center gap-4 animate-fade-in">
+                <div className="p-3 bg-slate-100 text-slate-400 rounded-2xl">
+                  <Receipt className="w-7 h-7" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-700">No items to split yet</p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {manualEntry
+                      ? 'Add the items you want to split.'
+                      : "We couldn't read any items from this receipt. Add them by hand, or start over with a clearer photo."}
+                  </p>
+                </div>
+                <button
+                  onClick={onToggleEditItems}
+                  className="inline-flex items-center gap-2 bg-indigo-600 text-white font-semibold py-2.5 px-5 rounded-xl hover:bg-indigo-700 transition-all shadow-sm active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add items</span>
+                </button>
+              </div>
             ) : (
               <div className="divide-y divide-slate-100">
                 {itemAdjustments.map((item) => {
@@ -1015,7 +1038,7 @@ const EditToggle: React.FC<{ active: boolean; onClick: () => void; idleLabel?: s
 
 // A single editable person row used in both the desktop column and the mobile
 // bar's edit mode: colored avatar initial, a live name field, and a remove
-// button (hidden when only one person remains). Mirrors the settings modal row.
+// button (hidden when only one person remains).
 const PersonEditRow: React.FC<{
   person: Person;
   canRemove: boolean;
