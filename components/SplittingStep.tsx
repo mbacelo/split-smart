@@ -5,7 +5,8 @@ import { formatCurrency } from '../utils/currency';
 import { getColorClasses, defaultPersonName } from './personColors';
 import { PersonCard } from './PersonCard';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Check, Plus, X, Trash2, Pencil, Share, Users, Receipt, RotateCcw, Scale, Minus } from 'lucide-react';
+import { Check, Plus, X, Trash2, Pencil, Share, Users, Receipt, RotateCcw, Scale, Minus, Contact } from 'lucide-react';
+import { contactsPickerSupported } from '../utils/contacts';
 
 interface EditState { active: boolean; value: number; }
 // Tip editing also tracks the unit (percent vs flat amount) being entered.
@@ -31,6 +32,7 @@ interface SplittingStepProps {
   onClearUnitWeights: (itemId: string) => void;
   onSelectPerson: (personId: string) => void;
   onAddPerson: () => void;
+  onAddPeopleFromContacts: () => void;
   onRenamePerson: (personId: string, name: string) => void;
   onRemovePerson: (personId: string) => void;
   onStartEditPeople: () => void;
@@ -81,6 +83,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   onClearUnitWeights,
   onSelectPerson,
   onAddPerson,
+  onAddPeopleFromContacts,
   onRenamePerson,
   onRemovePerson,
   onStartEditPeople,
@@ -198,6 +201,17 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         if (!idsBefore.has(id)) { el.focus(); el.select(); break; }
       }
     }, 0);
+  };
+
+  // Only shown on browsers with the OS contact picker (Android Chrome/Edge).
+  const canPickContacts = contactsPickerSupported();
+
+  // Like handleAddPerson, but the names come from the picker so there's no field
+  // to focus. Still snapshot into edit mode first so Cancel can undo the adds.
+  const handleAddFromContacts = () => {
+    if (!isEditingPeople) onStartEditPeople();
+    setIsEditingPeople(true);
+    onAddPeopleFromContacts();
   };
 
   // Manual entry lands directly in edit mode — put the cursor in the first
@@ -675,6 +689,15 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 <Plus className="w-4 h-4" />
                 <span>Add person</span>
               </button>
+              {canPickContacts && (
+                <button
+                  onClick={handleAddFromContacts}
+                  className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
+                >
+                  <Contact className="w-4 h-4" />
+                  <span>Pick from contacts</span>
+                </button>
+              )}
               {isEditingPeople && (
                 <button
                   onClick={() => setShowRestoreConfirm(true)}
@@ -755,6 +778,15 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
               <Plus className="w-4 h-4" />
               <span>Add person</span>
             </button>
+            {canPickContacts && (
+              <button
+                onClick={handleAddFromContacts}
+                className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 font-medium flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200"
+              >
+                <Contact className="w-4 h-4" />
+                <span>Pick from contacts</span>
+              </button>
+            )}
             <button
               onClick={() => setShowRestoreConfirm(true)}
               className="w-full flex items-center justify-center gap-2 text-sm font-medium text-slate-500 hover:text-indigo-600 hover:bg-slate-50 rounded-lg py-2 transition-colors"
@@ -807,6 +839,20 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             </div>
             <span className="text-[11px] font-bold text-slate-500">Add</span>
           </button>
+          {canPickContacts && (
+            <button
+              onClick={handleAddFromContacts}
+              title="Pick from contacts"
+              aria-label="Pick from contacts"
+              className="flex flex-col items-center flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+              style={{ minWidth: '70px' }}
+            >
+              <div className="w-12 h-12 rounded-full flex items-center justify-center mb-1 border-2 border-dashed border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors">
+                <Contact className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-500">Contacts</span>
+            </button>
+          )}
         </div>
         )}
       </div>

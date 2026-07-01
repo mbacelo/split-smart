@@ -12,6 +12,7 @@ import { AnalyzingStep } from './components/AnalyzingStep';
 import { SplittingStep } from './components/SplittingStep';
 import { computeStats } from './state/stats';
 import { createPerson } from './components/personColors';
+import { pickContactNames } from './utils/contacts';
 import { getInitialPeople, makeInitialState, savePeople, clearPeople, saveSession, saveSessionImage, hasSavedPeople } from './state/session';
 
 export default function App() {
@@ -429,6 +430,26 @@ export default function App() {
     setActivePersonId(newPerson.id);
   };
 
+  // Add one person per contact picked from the OS contact picker (Android
+  // Chrome/Edge only; the button that calls this is hidden elsewhere). Builds all
+  // new people in a single state update so colors/default numbers don't collide.
+  const handleAddPeopleFromContacts = async () => {
+    const names = await pickContactNames();
+    if (names.length === 0) return;
+    // Accumulate against a growing list so createPerson sees each prior addition
+    // when picking the next color / default name. Suffix the id with the index
+    // because createPerson's `p${Date.now()}` id collides within a single tick.
+    const added: typeof state.people = [];
+    names.forEach((name, i) => {
+      const person = createPerson([...state.people, ...added], name || undefined);
+      added.push({ ...person, id: `${person.id}-${i}` });
+    });
+    const newPeople = [...state.people, ...added];
+    setState(prev => ({ ...prev, people: newPeople }));
+    savePeople(newPeople);
+    setActivePersonId(added[added.length - 1].id);
+  };
+
   // Inline rename from the splitting view's "Edit" mode. Live as the user types;
   // ids are unchanged so assignments are untouched.
   const renamePerson = (id: string, name: string) => {
@@ -803,6 +824,7 @@ export default function App() {
             onClearUnitWeights={clearUnitWeights}
             onSelectPerson={setActivePersonId}
             onAddPerson={handleAddPerson}
+            onAddPeopleFromContacts={handleAddPeopleFromContacts}
             onRenamePerson={renamePerson}
             onRemovePerson={removePerson}
             onStartEditPeople={startEditPeople}
