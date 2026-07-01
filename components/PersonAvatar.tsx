@@ -24,7 +24,7 @@ interface PersonAvatarProps {
 export const PersonAvatar: React.FC<PersonAvatarProps> = ({ photo, className = '', children, title, style, overlay }) => (
   <div className={`relative overflow-hidden ${className}`} title={title} style={style}>
     {photo ? (
-      <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" referrerPolicy="no-referrer" />
     ) : (
       children
     )}

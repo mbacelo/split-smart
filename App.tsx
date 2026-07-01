@@ -77,16 +77,18 @@ export default function App() {
   }, [accountMenuOpen]);
 
   // First-time visitors sign in after mount, when the people list is still the
-  // untouched default. Seed Person #1 with their first name once we know it.
-  // Only touches a still-pristine p1 (never a customized/saved list) and isn't
-  // persisted here — it saves later if the user edits anything, like other defaults.
+  // untouched default. Seed Person #1 with their first name (and Google photo,
+  // if any) once we know it. Only touches a still-pristine p1 (never a
+  // customized/saved list) and isn't persisted here — it saves later if the user
+  // edits anything, like other defaults.
   useEffect(() => {
     const first = getUserFirstName();
     if (!first || hasSavedPeople()) return;
+    const picture = getUser()?.picture;
     setState(prev => {
       const p1 = prev.people[0];
       if (!p1 || p1.id !== 'p1' || p1.name !== 'Person #1') return prev;
-      return { ...prev, people: prev.people.map(p => p.id === 'p1' ? { ...p, name: first } : p) };
+      return { ...prev, people: prev.people.map(p => p.id === 'p1' ? { ...p, name: first, ...(picture ? { photo: picture } : {}) } : p) };
     });
   }, [user]);
 
