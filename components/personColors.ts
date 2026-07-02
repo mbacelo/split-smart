@@ -8,6 +8,7 @@
 // palette in COLOR_PALETTE below — keep them in sync if you add a color.
 
 import { Person } from '../types';
+import { makeId } from '../utils/id';
 
 // The colors assigned to people, in the order they're handed out. Adding people
 // past the end of this list cycles back to the start.
@@ -68,4 +69,4 @@ export const defaultPersonName = (existing: Person[]): string => {
 // `defaultPersonName` so a freshly-added participant is immediately usable;
 // callers can pass an explicit name (or '' to force the user to type one).
 export const createPerson = (existing: Person[], name?: string): Person =>
-  ({ id: `p${Date.now()}`, name: name ?? defaultPersonName(existing), color: nextPersonColor(existing) });
+  ({ id: makeId(), name: name ?? defaultPersonName(existing), color: nextPersonColor(existing) });

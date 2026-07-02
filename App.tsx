@@ -127,13 +127,6 @@ export default function App() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Local state for editing to allow Apply/Cancel workflow
-  const [editingTotal, setEditingTotal] = useState<{ active: boolean; value: number }>({ active: false, value: 0 });
-  const [editingDiscount, setEditingDiscount] = useState<{ active: boolean; value: number }>({ active: false, value: 0 });
-  // Tip editing carries the input mode too (percent vs flat amount) so the user
-  // can switch units while the editor is open before applying.
-  const [editingTip, setEditingTip] = useState<{ active: boolean; value: number; mode: AppState['tipMode'] }>({ active: false, value: 0, mode: 'percent' });
-
   // Sync activePersonId if current people list changes
   useEffect(() => {
     if (!activePersonId && state.people.length > 0) {
@@ -165,15 +158,24 @@ export default function App() {
     }
   }, [toast]);
 
-  // Calculate stats derived from state
-  const stats = useMemo(() => computeStats(state), [state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.unitWeights, state.people, state.manualEntry, state.manualTotalOverride]);
+  // Calculate stats derived from state. `state` is a single immutable object,
+  // so depending on it directly can never miss a field that affects the math.
+  const stats = useMemo(() => computeStats(state), [state]);
   const { personTotals, effectiveTotal, unassignedTotal } = stats;
+
+  // Lets the user abort an in-flight receipt analysis (see AnalyzingStep's
+  // Cancel button) instead of waiting out a slow/hung AI call.
+  const analyzeAbortRef = useRef<AbortController | null>(null);
 
   const handleImageSelected = async (base64: string) => {
     setState(prev => ({ ...prev, step: 'analyzing', receiptImage: base64, error: null }));
+    const controller = new AbortController();
+    analyzeAbortRef.current = controller;
 
     try {
-      const result = await analyzeReceipt(base64);
+      const result = await analyzeReceipt(base64, controller.signal);
+      // If the user cancelled while the response was landing, stay cancelled.
+      if (controller.signal.aborted) return;
       setState(prev => ({
         ...prev,
         step: 'splitting',
@@ -188,12 +190,23 @@ export default function App() {
         manualTotalOverride: null,
       }));
     } catch (err: any) {
+      // A user-initiated cancel already reset the state — don't surface it.
+      if (err?.name === 'AbortError') return;
       setState(prev => ({
         ...prev,
         step: 'upload',
         error: err.message || "Something went wrong"
       }));
+    } finally {
+      if (analyzeAbortRef.current === controller) analyzeAbortRef.current = null;
     }
+  };
+
+  // Abort the in-flight analysis and return to the upload step.
+  const cancelAnalyze = () => {
+    analyzeAbortRef.current?.abort();
+    analyzeAbortRef.current = null;
+    setState(prev => ({ ...prev, step: 'upload', receiptImage: null, error: null }));
   };
 
   // Skip the photo + AI step and start a blank split the user fills in by hand.
@@ -414,9 +427,6 @@ export default function App() {
       manualEntry: false,
       manualTotalOverride: null,
     }));
-    setEditingTotal({ active: false, value: 0 });
-    setEditingDiscount({ active: false, value: 0 });
-    setEditingTip({ active: false, value: 0, mode: 'percent' });
     setIsEditingItems(false);
     setShowResetConfirm(false);
   };
@@ -439,12 +449,11 @@ export default function App() {
     const contacts = await pickContacts();
     if (contacts.length === 0) return;
     // Accumulate against a growing list so createPerson sees each prior addition
-    // when picking the next color / default name. Suffix the id with the index
-    // because createPerson's `p${Date.now()}` id collides within a single tick.
+    // when picking the next color / default name.
     const added: typeof state.people = [];
-    contacts.forEach(({ name, photo }, i) => {
+    contacts.forEach(({ name, photo }) => {
       const person = createPerson([...state.people, ...added], name || undefined);
-      added.push({ ...person, id: `${person.id}-${i}`, ...(photo ? { photo } : {}) });
+      added.push({ ...person, ...(photo ? { photo } : {}) });
     });
     const newPeople = [...state.people, ...added];
     setState(prev => ({ ...prev, people: newPeople }));
@@ -488,57 +497,41 @@ export default function App() {
     clearPeople();
   };
 
-  // Total / discount editing handlers. In manual entry the editable figure is
-  // the override (prefilled from the current items sum when none is set yet);
-  // for a scanned receipt it's the scanned total.
-  const openTotalEdit = () => setEditingTotal({
-    active: true,
-    value: state.manualEntry ? (state.manualTotalOverride ?? stats.itemsTotalSum) : state.total,
-  });
-  const openDiscountEdit = () => setEditingDiscount({ active: true, value: state.discount });
-  const openTipEdit = () => setEditingTip({ active: true, value: state.tip, mode: state.tipMode });
-
-  const applyTotalEdit = () => {
+  // Total / discount / tip mutations. The transient editor UI (which figure is
+  // open, the value being typed) lives inside SplittingStep; these receive the
+  // final applied values and clamp them into their valid ranges.
+  // In manual entry the edited figure is the pinned override; for a scanned
+  // receipt it's the scanned total.
+  const setTotal = (value: number) => {
     setState(prev => prev.manualEntry
-      ? { ...prev, manualTotalOverride: Math.max(0, editingTotal.value) }
-      : { ...prev, total: Math.max(0, editingTotal.value) });
-    setEditingTotal({ active: false, value: 0 });
+      ? { ...prev, manualTotalOverride: Math.max(0, value) }
+      : { ...prev, total: Math.max(0, value) });
   };
 
   // Manual entry only: drop the pinned total and go back to tracking the items
   // sum automatically.
   const clearTotalOverride = () => {
     setState(prev => ({ ...prev, manualTotalOverride: null }));
-    setEditingTotal({ active: false, value: 0 });
   };
 
-  const applyDiscountEdit = () => {
-    setState(prev => ({ ...prev, discount: Math.min(100, Math.max(0, editingDiscount.value)) }));
-    setEditingDiscount({ active: false, value: 0 });
+  const setDiscount = (value: number) => {
+    setState(prev => ({ ...prev, discount: Math.min(100, Math.max(0, value)) }));
   };
 
-  // Tip applies the value in whichever unit the editor is in. A percentage is
-  // capped at 100% (matching discount); a flat amount is only floored at 0.
-  const applyTipEdit = () => {
+  // Tip applies the value in whichever unit was entered. A percentage is capped
+  // at 100% (matching discount); a flat amount is only floored at 0.
+  const setTip = (value: number, mode: AppState['tipMode']) => {
     setState(prev => ({
       ...prev,
-      tipMode: editingTip.mode,
-      tip: editingTip.mode === 'percent'
-        ? Math.min(100, Math.max(0, editingTip.value))
-        : Math.max(0, editingTip.value),
+      tipMode: mode,
+      tip: mode === 'percent' ? Math.min(100, Math.max(0, value)) : Math.max(0, value),
     }));
-    setEditingTip({ active: false, value: 0, mode: 'percent' });
   };
 
-  // Clear the tip entirely (back to no tip), collapsing the editor.
+  // Clear the tip entirely (back to no tip).
   const clearTip = () => {
     setState(prev => ({ ...prev, tip: 0 }));
-    setEditingTip({ active: false, value: 0, mode: 'percent' });
   };
-
-  const cancelTotalEdit = () => setEditingTotal({ active: false, value: 0 });
-  const cancelDiscountEdit = () => setEditingDiscount({ active: false, value: 0 });
-  const cancelTipEdit = () => setEditingTip({ active: false, value: 0, mode: 'percent' });
 
   const generateSummaryText = () => {
     let text = `🧾 SplitSmart: Receipt Summary\n`;
@@ -809,7 +802,7 @@ export default function App() {
 
         {state.step === 'upload' && <UploadStep onImageSelected={handleImageSelected} onManualEntry={startManualEntry} onError={(msg) => notify(msg, 'error')} />}
 
-        {state.step === 'analyzing' && <AnalyzingStep />}
+        {state.step === 'analyzing' && <AnalyzingStep onCancel={cancelAnalyze} />}
 
         {state.step === 'splitting' && (
           <SplittingStep
@@ -839,23 +832,10 @@ export default function App() {
             onUpdateItem={updateItem}
             onAddItem={addItem}
             onDeleteItem={deleteItem}
-            editingTotal={editingTotal}
-            onOpenTotalEdit={openTotalEdit}
-            onChangeTotalEdit={(value) => setEditingTotal(prev => ({ ...prev, value }))}
-            onApplyTotalEdit={applyTotalEdit}
-            onCancelTotalEdit={cancelTotalEdit}
+            onSetTotal={setTotal}
             onClearTotalOverride={clearTotalOverride}
-            editingDiscount={editingDiscount}
-            onOpenDiscountEdit={openDiscountEdit}
-            onChangeDiscountEdit={(value) => setEditingDiscount(prev => ({ ...prev, value }))}
-            onApplyDiscountEdit={applyDiscountEdit}
-            onCancelDiscountEdit={cancelDiscountEdit}
-            editingTip={editingTip}
-            onOpenTipEdit={openTipEdit}
-            onChangeTipEdit={(value) => setEditingTip(prev => ({ ...prev, value }))}
-            onChangeTipMode={(mode) => setEditingTip(prev => ({ ...prev, mode }))}
-            onApplyTipEdit={applyTipEdit}
-            onCancelTipEdit={cancelTipEdit}
+            onSetDiscount={setDiscount}
+            onSetTip={setTip}
             onClearTip={clearTip}
           />
         )}

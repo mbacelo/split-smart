@@ -7,7 +7,7 @@ import { getIdToken } from "./auth";
  * Signature kept identical to the old client-side analyzeReceipt so callers
  * are unchanged.
  */
-export const analyzeReceipt = async (imageBase64: string): Promise<ProcessedReceipt> => {
+export const analyzeReceipt = async (imageBase64: string, signal?: AbortSignal): Promise<ProcessedReceipt> => {
   const token = getIdToken();
   if (!token) throw new Error("Please sign in to analyze receipts.");
 
@@ -18,6 +18,8 @@ export const analyzeReceipt = async (imageBase64: string): Promise<ProcessedRece
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ imageBase64 }),
+    // Lets the caller cancel a slow analysis (rejects with an AbortError).
+    signal,
   });
 
   if (!res.ok) {

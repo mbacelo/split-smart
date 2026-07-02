@@ -10,9 +10,11 @@ npm run dev      # Vite on :3000 — serves the UI AND /api together (see below)
 npm start        # vercel dev — alternative full-stack local run via the Vercel CLI
 npm run build    # vite build → dist/
 npm run preview  # serve the production build (UI only, no /api)
+npm run typecheck  # tsc --noEmit (strict mode)
+npm test         # vitest — covers state/stats.ts and lib/ai/postProcess.ts
 ```
 
-There is no test runner, linter, or typecheck script configured. `tsconfig.json` is `noEmit` (type info only; Vite does the transpiling).
+There is no linter configured. `tsconfig.json` is `noEmit` + `strict` (type info only; Vite does the transpiling). Run `npm run typecheck` and `npm test` after changes.
 
 `npm run dev` runs the real serverless handler in-process via a dev-only Vite plugin ([vite.config.ts](vite.config.ts) `devApiPlugin`), so `/api/analyze-receipt` works locally without the Vercel CLI. Plain Vite *without* this plugin would not serve `/api` — the plugin is what makes `npm run dev` sufficient. It reads server env from `.env.local` (all keys, unfiltered) and exposes only `VITE_`-prefixed vars to the browser.
 

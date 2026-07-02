@@ -1,19 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Person, ReceiptItem, UnitWeightState } from '../types';
-import { SplitStats, ItemAdjustment, splitCentsWeighted } from '../state/stats';
+import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses, defaultPersonName } from './personColors';
 import { PersonCard } from './PersonCard';
 import { PersonAvatar } from './PersonAvatar';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Check, Plus, X, Trash2, Pencil, Share, Users, Receipt, RotateCcw, Scale, Minus, Contact } from 'lucide-react';
+import { ReceiptPreview } from './ReceiptPreview';
+import { TipControl, TipEditState } from './TipControl';
+import { UnitAllocationPanel } from './UnitAllocationPanel';
+import { PersonEditRow } from './PersonEditRow';
+import { ItemEditRow, ItemPatch } from './ItemEditRow';
+import { EditToggle, CancelEditButton } from './EditControls';
+import { Check, Plus, X, Pencil, Share, Users, Receipt, RotateCcw, Scale, Contact } from 'lucide-react';
 import { contactsPickerSupported } from '../utils/contacts';
 
 interface EditState { active: boolean; value: number; }
-// Tip editing also tracks the unit (percent vs flat amount) being entered.
-interface TipEditState { active: boolean; value: number; mode: AppState['tipMode']; }
-
-type ItemPatch = Partial<Pick<ReceiptItem, 'name' | 'quantity' | 'originalPrice'>>;
 
 interface SplittingStepProps {
   state: AppState;
@@ -47,26 +49,13 @@ interface SplittingStepProps {
   onUpdateItem: (id: string, patch: ItemPatch) => void;
   onAddItem: () => void;
   onDeleteItem: (id: string) => void;
-  // Total editing
-  editingTotal: EditState;
-  onOpenTotalEdit: () => void;
-  onChangeTotalEdit: (value: number) => void;
-  onApplyTotalEdit: () => void;
-  onCancelTotalEdit: () => void;
+  // Total / discount / tip mutations. The transient editor state (which figure
+  // is open, the value being typed) lives locally in this component — App only
+  // receives the final applied values.
+  onSetTotal: (value: number) => void;
   onClearTotalOverride: () => void;
-  // Discount editing
-  editingDiscount: EditState;
-  onOpenDiscountEdit: () => void;
-  onChangeDiscountEdit: (value: number) => void;
-  onApplyDiscountEdit: () => void;
-  onCancelDiscountEdit: () => void;
-  // Tip editing
-  editingTip: TipEditState;
-  onOpenTipEdit: () => void;
-  onChangeTipEdit: (value: number) => void;
-  onChangeTipMode: (mode: AppState['tipMode']) => void;
-  onApplyTipEdit: () => void;
-  onCancelTipEdit: () => void;
+  onSetDiscount: (value: number) => void;
+  onSetTip: (value: number, mode: AppState['tipMode']) => void;
   onClearTip: () => void;
 }
 
@@ -97,23 +86,10 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   onUpdateItem,
   onAddItem,
   onDeleteItem,
-  editingTotal,
-  onOpenTotalEdit,
-  onChangeTotalEdit,
-  onApplyTotalEdit,
-  onCancelTotalEdit,
+  onSetTotal,
   onClearTotalOverride,
-  editingDiscount,
-  onOpenDiscountEdit,
-  onChangeDiscountEdit,
-  onApplyDiscountEdit,
-  onCancelDiscountEdit,
-  editingTip,
-  onOpenTipEdit,
-  onChangeTipEdit,
-  onChangeTipMode,
-  onApplyTipEdit,
-  onCancelTipEdit,
+  onSetDiscount,
+  onSetTip,
   onClearTip,
 }) => {
   const {
@@ -136,6 +112,56 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   const totalOverridden = manualEntry && state.manualTotalOverride != null;
   const baseTotal = manualEntry ? (state.manualTotalOverride ?? itemsTotalSum) : state.total;
   const baseTotalLabel = manualEntry ? (totalOverridden ? 'Total' : 'Items Total') : 'Receipt Total';
+
+  // Local editor state for the total/discount/tip figures: which editor is open
+  // and the value being typed. Apply hands the final value up via the
+  // onSet*/onClear* props; Cancel just closes. This state is transient UI —
+  // it resets naturally when the splitting step unmounts.
+  const [editingTotal, setEditingTotal] = useState<EditState>({ active: false, value: 0 });
+  const [editingDiscount, setEditingDiscount] = useState<EditState>({ active: false, value: 0 });
+  const [editingTip, setEditingTip] = useState<TipEditState>({ active: false, value: 0, mode: 'percent' });
+
+  // In manual entry the editable figure is the override (prefilled from the
+  // current items sum when none is set yet); for a scanned receipt it's the
+  // scanned total.
+  const openTotalEdit = () => setEditingTotal({
+    active: true,
+    value: manualEntry ? (state.manualTotalOverride ?? itemsTotalSum) : state.total,
+  });
+  const changeTotalEdit = (value: number) => setEditingTotal((prev) => ({ ...prev, value }));
+  const applyTotalEdit = () => {
+    onSetTotal(editingTotal.value);
+    setEditingTotal({ active: false, value: 0 });
+  };
+  const cancelTotalEdit = () => setEditingTotal({ active: false, value: 0 });
+  // Manual entry only: drop the pinned total and go back to tracking the items
+  // sum automatically.
+  const clearTotalOverride = () => {
+    onClearTotalOverride();
+    setEditingTotal({ active: false, value: 0 });
+  };
+
+  const openDiscountEdit = () => setEditingDiscount({ active: true, value: state.discount });
+  const changeDiscountEdit = (value: number) => setEditingDiscount((prev) => ({ ...prev, value }));
+  const applyDiscountEdit = () => {
+    onSetDiscount(editingDiscount.value);
+    setEditingDiscount({ active: false, value: 0 });
+  };
+  const cancelDiscountEdit = () => setEditingDiscount({ active: false, value: 0 });
+
+  // Tip editing carries the input mode too (percent vs flat amount) so the user
+  // can switch units while the editor is open before applying.
+  const openTipEdit = () => setEditingTip({ active: true, value: state.tip, mode: state.tipMode });
+  const applyTipEdit = () => {
+    onSetTip(editingTip.value, editingTip.mode);
+    setEditingTip({ active: false, value: 0, mode: 'percent' });
+  };
+  const cancelTipEdit = () => setEditingTip({ active: false, value: 0, mode: 'percent' });
+  // Clear the tip entirely (back to no tip), collapsing the editor.
+  const clearTip = () => {
+    onClearTip();
+    setEditingTip({ active: false, value: 0, mode: 'percent' });
+  };
 
   const getPersonColorClass = (personId: string) => {
     const person = state.people.find((p) => p.id === personId);
@@ -251,7 +277,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
           {editingTotal.active ? (
             <div className="flex items-center gap-1 mt-0.5">
               {totalOverridden && (
-                <button onClick={onClearTotalOverride} title="Back to items total" className="p-1 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors active:scale-90">
+                <button onClick={clearTotalOverride} title="Back to items total" className="p-1 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors active:scale-90">
                   <RotateCcw className="w-4 h-4" />
                 </button>
               )}
@@ -259,28 +285,29 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
                 <input
                   type="number"
+                  inputMode="decimal"
                   autoFocus
                   step="0.01"
                   placeholder="0.00"
                   value={editingTotal.value || ''}
-                  onChange={(e) => onChangeTotalEdit(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => changeTotalEdit(parseFloat(e.target.value) || 0)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); onApplyTotalEdit(); }
-                    else if (e.key === 'Escape') { e.preventDefault(); onCancelTotalEdit(); }
+                    if (e.key === 'Enter') { e.preventDefault(); applyTotalEdit(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); cancelTotalEdit(); }
                   }}
                   className="w-full pl-5 pr-1 py-1 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-base text-right"
                 />
               </div>
-              <button onClick={onApplyTotalEdit} title="Apply" className="p-1 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors active:scale-90">
+              <button onClick={applyTotalEdit} title="Apply" className="p-1 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors active:scale-90">
                 <Check className="w-4 h-4" />
               </button>
-              <button onClick={onCancelTotalEdit} title="Cancel" className="p-1 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
+              <button onClick={cancelTotalEdit} title="Cancel" className="p-1 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
                 <X className="w-4 h-4" />
               </button>
             </div>
           ) : (
             <button
-              onClick={onOpenTotalEdit}
+              onClick={openTotalEdit}
               className="flex items-center gap-1.5"
               title={manualEntry ? 'Tap to override the total' : 'Tap to correct the total'}
             >
@@ -338,34 +365,35 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
                       <input
                         type="number"
+                        inputMode="decimal"
                         autoFocus
                         step="0.01"
                         placeholder="0.00"
                         value={editingTotal.value || ''}
-                        onChange={(e) => onChangeTotalEdit(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => changeTotalEdit(parseFloat(e.target.value) || 0)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.preventDefault(); onApplyTotalEdit(); }
-                          else if (e.key === 'Escape') { e.preventDefault(); onCancelTotalEdit(); }
+                          if (e.key === 'Enter') { e.preventDefault(); applyTotalEdit(); }
+                          else if (e.key === 'Escape') { e.preventDefault(); cancelTotalEdit(); }
                         }}
                         className="w-full pl-6 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm"
                       />
                     </div>
                     {totalOverridden && (
-                      <button onClick={onClearTotalOverride} title="Back to items total" className="p-1.5 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors active:scale-90">
+                      <button onClick={clearTotalOverride} title="Back to items total" className="p-1.5 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors active:scale-90">
                         <RotateCcw className="w-4 h-4" />
                       </button>
                     )}
-                    <button onClick={onApplyTotalEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
+                    <button onClick={applyTotalEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
                       <Check className="w-4 h-4" />
                     </button>
-                    <button onClick={onCancelTotalEdit} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
+                    <button onClick={cancelTotalEdit} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
                   <>
                     <button
-                      onClick={onOpenTotalEdit}
+                      onClick={openTotalEdit}
                       className="text-sm text-slate-500 flex items-center gap-2 hover:text-indigo-600 transition-colors group"
                       title={manualEntry ? 'Tap to override the total' : 'Tap to correct the total'}
                     >
@@ -464,6 +492,14 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     <div key={item.id} className={`${isUnitExpanded ? 'bg-slate-50/60' : ''}`}>
                     <div
                       onClick={() => onToggleAssignment(item.id)}
+                      // Assigning is the app's core interaction — make the row a
+                      // real keyboard target (Tab + Enter/Space), not click-only.
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={!!isAssignedToActive}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleAssignment(item.id); }
+                      }}
                       className={`group flex items-center justify-between p-4 cursor-pointer transition-colors duration-200 ${bgClass} ${isUnassigned ? 'border-l-4 border-l-amber-300' : 'border-l-4 border-l-transparent'}`}
                     >
                       <div className="flex-1 min-w-0 pr-4">
@@ -566,7 +602,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-[64px] justify-center">
               {!editingDiscount.active && state.discount === 0 ? (
                 <button
-                  onClick={onOpenDiscountEdit}
+                  onClick={openDiscountEdit}
                   className="w-full h-full p-4 flex items-center justify-center gap-2 text-indigo-600 font-semibold hover:bg-indigo-50 transition-colors"
                 >
                   <Plus className="w-4 h-4" />
@@ -574,7 +610,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                 </button>
               ) : !editingDiscount.active && state.discount > 0 ? (
                 <button
-                  onClick={onOpenDiscountEdit}
+                  onClick={openDiscountEdit}
                   className="w-full h-full p-4 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center gap-1.5 text-indigo-600 font-bold text-sm">
@@ -588,25 +624,26 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   <div className="relative flex-1">
                     <input
                       type="number"
+                      inputMode="decimal"
                       autoFocus
                       placeholder="0"
                       min="0"
                       max="100"
                       value={editingDiscount.value || ''}
-                      onChange={(e) => onChangeDiscountEdit(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => changeDiscountEdit(parseFloat(e.target.value) || 0)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); onApplyDiscountEdit(); }
-                        else if (e.key === 'Escape') { e.preventDefault(); onCancelDiscountEdit(); }
+                        if (e.key === 'Enter') { e.preventDefault(); applyDiscountEdit(); }
+                        else if (e.key === 'Escape') { e.preventDefault(); cancelDiscountEdit(); }
                       }}
                       className="w-full pl-3 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-base"
                     />
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">%</span>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={onApplyDiscountEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
+                    <button onClick={applyDiscountEdit} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
                       <Check className="w-4 h-4" />
                     </button>
-                    <button onClick={onCancelDiscountEdit} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
+                    <button onClick={cancelDiscountEdit} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -620,12 +657,12 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
               tip={state.tip}
               tipLabel={tipLabel}
               editing={editingTip}
-              onOpen={onOpenTipEdit}
-              onChangeValue={onChangeTipEdit}
-              onChangeMode={onChangeTipMode}
-              onApply={onApplyTipEdit}
-              onCancel={onCancelTipEdit}
-              onClear={onClearTip}
+              onOpen={openTipEdit}
+              onChangeValue={(value) => setEditingTip((prev) => ({ ...prev, value }))}
+              onChangeMode={(mode) => setEditingTip((prev) => ({ ...prev, mode }))}
+              onApply={applyTipEdit}
+              onCancel={cancelTipEdit}
+              onClear={clearTip}
             />
           </div>
 
@@ -672,7 +709,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     />
                   ))
                 : state.people.map((person) => {
-                    const itemCount = Object.values(state.assignments).filter((ids) => (ids as string[]).includes(person.id)).length;
+                    const itemCount = Object.values(state.assignments).filter((ids) => ids.includes(person.id)).length;
                     return (
                       <PersonCard
                         key={person.id}
@@ -881,500 +918,5 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         <ReceiptPreview image={receiptImage} onClose={() => setIsReceiptZoomed(false)} />
       )}
     </>
-  );
-};
-
-// Full-screen receipt preview for cross-checking the AI's reading against the
-// photo. The app's viewport disables native pinch-zoom (user-scalable=no), so
-// this implements its own gesture-based zoom on the image: pinch (two-finger) or
-// mouse wheel to scale 1×–6×, drag to pan when zoomed, double-tap/double-click to
-// toggle 1×↔2.5×. Tapping the (un-zoomed) backdrop closes it. The transform is
-// applied imperatively to avoid re-rendering on every gesture frame.
-const MIN_SCALE = 1;
-const MAX_SCALE = 6;
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-
-const ReceiptPreview: React.FC<{ image: string; onClose: () => void }> = ({ image, onClose }) => {
-  const imgRef = useRef<HTMLImageElement>(null);
-  // Live gesture state held in a ref so pointer/touch handlers mutate it without
-  // triggering React re-renders; `zoomed` is React state only so the cursor and
-  // close-on-backdrop behavior can react to whether we're currently magnified.
-  const [zoomed, setZoomed] = useState(false);
-  const t = useRef({ scale: 1, x: 0, y: 0 });
-  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStart = useRef<{ dist: number; scale: number } | null>(null);
-  const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
-  const lastTap = useRef(0);
-
-  // Close on Escape, like the other overlays.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const apply = () => {
-    const el = imgRef.current;
-    if (el) el.style.transform = `translate(${t.current.x}px, ${t.current.y}px) scale(${t.current.scale})`;
-  };
-
-  const setScale = (next: number) => {
-    const s = clamp(next, MIN_SCALE, MAX_SCALE);
-    t.current.scale = s;
-    if (s === 1) { t.current.x = 0; t.current.y = 0; }
-    apply();
-    setZoomed((z) => (s > 1) !== z ? s > 1 : z);
-  };
-
-  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-    Math.hypot(a.x - b.x, a.y - b.y);
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const pts = [...pointers.current.values()];
-    if (pts.length === 2) {
-      pinchStart.current = { dist: dist(pts[0], pts[1]), scale: t.current.scale };
-      panStart.current = null;
-    } else if (pts.length === 1 && t.current.scale > 1) {
-      panStart.current = { x: e.clientX, y: e.clientY, tx: t.current.x, ty: t.current.y };
-    }
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!pointers.current.has(e.pointerId)) return;
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const pts = [...pointers.current.values()];
-    if (pts.length === 2 && pinchStart.current) {
-      const ratio = dist(pts[0], pts[1]) / (pinchStart.current.dist || 1);
-      setScale(pinchStart.current.scale * ratio);
-    } else if (pts.length === 1 && panStart.current) {
-      t.current.x = panStart.current.tx + (e.clientX - panStart.current.x);
-      t.current.y = panStart.current.ty + (e.clientY - panStart.current.y);
-      apply();
-    }
-  };
-
-  const onPointerUp = (e: React.PointerEvent) => {
-    pointers.current.delete(e.pointerId);
-    if (pointers.current.size < 2) pinchStart.current = null;
-    if (pointers.current.size === 0) panStart.current = null;
-  };
-
-  // Double-tap / double-click toggles between fit and 2.5×.
-  const onTap = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const now = e.timeStamp;
-    if (now - lastTap.current < 300) {
-      setScale(t.current.scale > 1 ? 1 : 2.5);
-      lastTap.current = 0;
-    } else {
-      lastTap.current = now;
-    }
-  };
-
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    setScale(t.current.scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
-  };
-
-  return (
-    <div
-      onClick={() => { if (!zoomed) onClose(); }}
-      className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm overflow-hidden animate-fade-in"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Receipt photo"
-    >
-      <button
-        onClick={onClose}
-        className="fixed top-4 right-4 z-10 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
-        title="Close"
-        aria-label="Close receipt preview"
-      >
-        <X className="w-6 h-6" />
-      </button>
-      <div className="w-full h-full flex items-center justify-center p-4 touch-none select-none overflow-hidden">
-        <img
-          ref={imgRef}
-          src={image}
-          alt="Receipt"
-          draggable={false}
-          onClick={onTap}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onWheel={onWheel}
-          title={zoomed ? 'Double-tap to fit' : 'Pinch or double-tap to zoom'}
-          style={{ touchAction: 'none', transformOrigin: 'center center' }}
-          className={`max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl will-change-transform ${
-            zoomed ? 'cursor-grab' : 'cursor-zoom-in'
-          }`}
-        />
-      </div>
-    </div>
-  );
-};
-
-// Tip affordance: collapsed it's an "Add Tip" prompt (or a "Tip: 18% / $5.00"
-// pill once set); expanded it's a value field with a %/$ unit toggle, plus
-// Apply/Cancel and a Clear (only when a tip is already set). Mirrors the
-// discount control's shape so the two sit side by side, but adds the unit
-// switch since tips are entered either way. The applied value is interpreted by
-// computeStats per state.tipMode.
-const TipControl: React.FC<{
-  tip: number;
-  tipLabel: string;
-  editing: TipEditState;
-  onOpen: () => void;
-  onChangeValue: (value: number) => void;
-  onChangeMode: (mode: AppState['tipMode']) => void;
-  onApply: () => void;
-  onCancel: () => void;
-  onClear: () => void;
-}> = ({ tip, tipLabel, editing, onOpen, onChangeValue, onChangeMode, onApply, onCancel, onClear }) => {
-  const isPercent = editing.mode === 'percent';
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-[64px] justify-center">
-      {!editing.active && tip === 0 ? (
-        <button
-          onClick={onOpen}
-          className="w-full h-full p-4 flex items-center justify-center gap-2 text-emerald-600 font-semibold hover:bg-emerald-50 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Tip</span>
-        </button>
-      ) : !editing.active && tip > 0 ? (
-        <button
-          onClick={onOpen}
-          className="w-full h-full p-4 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors"
-        >
-          <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-sm">
-            <Plus className="w-3.5 h-3.5" />
-            <span>Tip: {tipLabel}</span>
-          </div>
-          <span className="text-[10px] text-slate-400">Tap to edit</span>
-        </button>
-      ) : (
-        <div className="p-3 animate-fade-in flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              {/* Prefix $ for amount mode; suffix % for percent mode. */}
-              {!isPercent && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>}
-              <input
-                type="number"
-                autoFocus
-                placeholder="0"
-                min="0"
-                max={isPercent ? '100' : undefined}
-                step={isPercent ? '1' : '0.01'}
-                value={editing.value || ''}
-                onChange={(e) => onChangeValue(parseFloat(e.target.value) || 0)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); onApply(); }
-                  else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-                }}
-                className={`w-full ${isPercent ? 'pl-3 pr-6' : 'pl-6 pr-3'} py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-bold text-base`}
-              />
-              {isPercent && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">%</span>}
-            </div>
-            {/* %/$ unit toggle */}
-            <div className="flex rounded-lg bg-slate-100 p-0.5 shrink-0" role="group" aria-label="Tip unit">
-              <button
-                onClick={() => onChangeMode('percent')}
-                aria-pressed={isPercent}
-                className={`px-2.5 py-1 rounded-md text-sm font-bold transition-colors ${isPercent ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                %
-              </button>
-              <button
-                onClick={() => onChangeMode('amount')}
-                aria-pressed={!isPercent}
-                className={`px-2.5 py-1 rounded-md text-sm font-bold transition-colors ${!isPercent ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                $
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 justify-end">
-            {tip > 0 && (
-              <button onClick={onClear} title="Remove tip" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:text-red-500 hover:bg-red-50 transition-colors active:scale-90 mr-auto">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-            <button onClick={onApply} title="Apply" className="p-1.5 rounded-lg text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm active:scale-90">
-              <Check className="w-4 h-4" />
-            </button>
-            <button onClick={onCancel} title="Cancel" className="p-1.5 rounded-lg text-slate-400 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-90">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Edit-mode toggle shown above the item list. Because edits apply live, this is
-// a mode switch, not a commit action — so both states share one pill shape/size
-// and differ only by fill + weight (ghost when off, filled indigo when on),
-// rather than morphing into a different-looking "confirm" button.
-const EditToggle: React.FC<{ active: boolean; onClick: () => void; idleLabel?: string }> = ({ active, onClick, idleLabel = 'Edit items' }) => (
-  <button
-    onClick={onClick}
-    aria-pressed={active}
-    className={`flex items-center gap-1.5 text-xs font-bold rounded-full px-2.5 py-1 transition-colors active:scale-95
-      ${active
-        ? 'text-white bg-indigo-600 hover:bg-indigo-700'
-        : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'}`}
-  >
-    {active ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-    <span>{active ? 'Done' : idleLabel}</span>
-  </button>
-);
-
-// Inline per-unit allocation panel for a multi-quantity item. Lists each person
-// with a small stepper for how many units they consumed, and a live preview of
-// the resulting share. Weights are relative — the line total divides in
-// proportion — so they need not sum to the quantity. A person left at 0 is
-// simply not on the item. "Reset to equal" drops all weights back to a plain
-// even split. Preview uses the same splitCentsWeighted as computeStats so the
-// numbers shown match the totals exactly.
-const UnitAllocationPanel: React.FC<{
-  item: ItemAdjustment;
-  people: Person[];
-  assignedPersonIds: string[];
-  itemWeights: { [personId: string]: number } | undefined;
-  hasWeights: boolean;
-  onSetUnitWeight: (itemId: string, personId: string, weight: number) => void;
-  onClearUnitWeights: (itemId: string) => void;
-}> = ({ item, people, assignedPersonIds, itemWeights, hasWeights, onSetUnitWeight, onClearUnitWeights }) => {
-  // Effective weight shown per person: explicit weight if set, else 1 for an
-  // assigned person (their equal share), else 0 (not on the item).
-  const assigned = new Set(assignedPersonIds);
-  const weightFor = (pid: string) => itemWeights?.[pid] ?? (assigned.has(pid) ? 1 : 0);
-
-  // Live preview: split the item's adjusted cents by the current weights across
-  // the people who have a positive weight, mirroring computeStats.
-  const participants = people.filter((p) => weightFor(p.id) > 0);
-  const cents = Math.round(item.adjustedPrice * 100);
-  const shareCents = splitCentsWeighted(cents, participants.map((p) => weightFor(p.id)));
-  const shareByPid: Record<string, number> = {};
-  participants.forEach((p, i) => { shareByPid[p.id] = shareCents[i]; });
-
-  return (
-    <div className="px-4 pb-4 pt-1 animate-fade-in" onClick={(e) => e.stopPropagation()}>
-      <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 uppercase tracking-wide">
-            <Scale className="w-3.5 h-3.5" />
-            Units consumed
-          </div>
-          {hasWeights && (
-            <button
-              onClick={() => onClearUnitWeights(item.id)}
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-indigo-600 transition-colors"
-              title="Split this item equally again"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Reset to equal
-            </button>
-          )}
-        </div>
-        <div className="space-y-2">
-          {people.map((person) => {
-            const c = getColorClasses(person.color);
-            const w = weightFor(person.id);
-            const share = shareByPid[person.id] ?? 0;
-            return (
-              <div key={person.id} className="flex items-center gap-2">
-                <PersonAvatar
-                  photo={person.photo}
-                  className={`w-6 h-6 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-[11px] border ${c.borderSoft}`}
-                >
-                  {person.name.trim().charAt(0).toUpperCase() || '?'}
-                </PersonAvatar>
-                <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700">{person.name}</span>
-                <span className={`text-xs font-semibold w-16 text-right ${w > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                  {w > 0 ? formatCurrency(share / 100) : '—'}
-                </span>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => onSetUnitWeight(item.id, person.id, w - 1)}
-                    disabled={w <= 0}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-90"
-                    aria-label={`Fewer units for ${person.name}`}
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={w || ''}
-                    placeholder="0"
-                    onChange={(e) => onSetUnitWeight(item.id, person.id, parseInt(e.target.value, 10) || 0)}
-                    aria-label={`Units for ${person.name}`}
-                    className="w-10 text-center bg-white border border-slate-200 rounded-lg py-1 font-bold text-slate-700 text-sm focus:ring-2 focus:ring-amber-400 outline-none"
-                  />
-                  <button
-                    onClick={() => onSetUnitWeight(item.id, person.id, w + 1)}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors active:scale-90"
-                    aria-label={`More units for ${person.name}`}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <p className="mt-2 text-[11px] text-slate-400 leading-snug">
-          Units split this {item.quantity}× item proportionally. They don't have to add up to {item.quantity}.
-        </p>
-      </div>
-    </div>
-  );
-};
-
-// A single editable person row used in both the desktop column and the mobile
-// bar's edit mode: colored avatar initial, a live name field, and a remove
-// button (hidden when only one person remains).
-const PersonEditRow: React.FC<{
-  person: Person;
-  canRemove: boolean;
-  onRename: (id: string, name: string) => void;
-  onBlurName: (id: string, name: string) => void;
-  onRemove: (id: string) => void;
-  inputRefs: React.MutableRefObject<Map<string, HTMLInputElement>>;
-}> = ({ person, canRemove, onRename, onBlurName, onRemove, inputRefs }) => {
-  const c = getColorClasses(person.color);
-  const isNameEmpty = person.name.trim().length === 0;
-  return (
-    <div className="flex items-center gap-3 group">
-      <PersonAvatar
-        photo={person.photo}
-        className={`w-10 h-10 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-sm border ${c.borderSoft} shadow-sm`}
-      >
-        {person.name.trim().charAt(0).toUpperCase() || '?'}
-      </PersonAvatar>
-      <input
-        type="text"
-        aria-label="Person name"
-        ref={(el) => {
-          if (el) inputRefs.current.set(person.id, el);
-          else inputRefs.current.delete(person.id);
-        }}
-        value={person.name}
-        onChange={(e) => onRename(person.id, e.target.value)}
-        onBlur={(e) => onBlurName(person.id, e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        placeholder="Enter name"
-        className={`flex-1 min-w-0 bg-slate-50 border rounded-lg px-3 py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-slate-900 placeholder-slate-400 font-medium transition-all
-          ${isNameEmpty ? 'border-red-300 focus:ring-red-200' : 'border-slate-300 shadow-sm'}`}
-      />
-      {canRemove && (
-        <button
-          onClick={() => onRemove(person.id)}
-          className="p-2 shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
-          title="Remove person"
-          aria-label="Remove person"
-        >
-          <Trash2 className="w-5 h-5" />
-        </button>
-      )}
-    </div>
-  );
-};
-
-// Discards in-progress edits and leaves edit mode. Styled as a ghost pill that
-// mirrors EditToggle's size so the two sit together cleanly.
-const CancelEditButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <button
-    onClick={onClick}
-    className="flex items-center gap-1.5 text-xs font-bold rounded-full px-2.5 py-1 text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors active:scale-95"
-  >
-    <X className="w-3.5 h-3.5" />
-    <span>Cancel</span>
-  </button>
-);
-
-// A single editable item row: quantity, name, price, delete. Edits are applied
-// live via onUpdate; there is no per-row apply/cancel.
-const ItemEditRow: React.FC<{
-  item: ReceiptItem;
-  onUpdate: (id: string, patch: ItemPatch) => void;
-  onDelete: (id: string) => void;
-  nameInputRefs: React.MutableRefObject<Map<string, HTMLInputElement>>;
-  // Enter in the price field commits the row and starts a fresh one — the fast
-  // path for typing in a list of items by hand.
-  onAddRow: () => void;
-}> = ({ item, onUpdate, onDelete, nameInputRefs, onAddRow }) => {
-  const isNameEmpty = item.name.trim().length === 0;
-  const priceInputRef = useRef<HTMLInputElement>(null);
-  const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-  };
-
-  return (
-    <div className="flex items-center gap-2 group">
-      {/* Quantity */}
-      <input
-        type="number"
-        min="1"
-        step="1"
-        aria-label="Quantity"
-        value={item.quantity || ''}
-        onChange={(e) => onUpdate(item.id, { quantity: parseInt(e.target.value, 10) || 1 })}
-        onKeyDown={blurOnEnter}
-        className="w-12 shrink-0 text-center bg-slate-50 border border-slate-300 rounded-lg py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-bold text-slate-700 shadow-sm"
-      />
-      {/* Name — Enter hops to the price field so a row can be filled in without
-          reaching for the mouse. */}
-      <input
-        ref={(el) => {
-          if (el) nameInputRefs.current.set(item.id, el);
-          else nameInputRefs.current.delete(item.id);
-        }}
-        type="text"
-        aria-label="Item name"
-        value={item.name}
-        onChange={(e) => onUpdate(item.id, { name: e.target.value })}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); priceInputRef.current?.focus(); }
-        }}
-        placeholder="Item name"
-        className={`flex-1 min-w-0 bg-slate-50 border rounded-lg px-3 py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-slate-900 placeholder-slate-400 font-medium transition-all
-          ${isNameEmpty ? 'border-red-300 focus:ring-red-200' : 'border-slate-300 shadow-sm'}`}
-      />
-      {/* Price — Enter commits and opens the next row. */}
-      <div className="relative w-24 shrink-0">
-        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
-        <input
-          ref={priceInputRef}
-          type="number"
-          min="0"
-          step="0.01"
-          aria-label="Price"
-          placeholder="0.00"
-          value={item.originalPrice || ''}
-          onChange={(e) => onUpdate(item.id, { originalPrice: parseFloat(e.target.value) || 0 })}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); onAddRow(); }
-          }}
-          className="w-full pl-5 pr-2 py-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-bold text-slate-900 shadow-sm"
-        />
-      </div>
-      {/* Delete */}
-      <button
-        onClick={() => onDelete(item.id)}
-        className="p-2 shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
-        title="Remove item"
-        aria-label="Remove item"
-      >
-        <Trash2 className="w-5 h-5" />
-      </button>
-    </div>
   );
 };
