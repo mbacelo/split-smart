@@ -2,15 +2,17 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { OAuth2Client } from "google-auth-library";
 import { getProvider, toProcessedReceipt } from "../lib/ai/index.js";
 
-// Allow base64 image payloads (a photo can be a few MB once base64-encoded).
+// Allow base64 image payloads. The client downscales to ~1600px JPEG (well
+// under 1MB), so 5mb is already generous headroom; keep it low because the
+// whole body is buffered into memory before any size check runs.
 export const config = {
   api: {
-    bodyParser: { sizeLimit: "8mb" },
+    bodyParser: { sizeLimit: "5mb" },
   },
 };
 
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
-const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // ~6MB of decoded image
+const MAX_IMAGE_BYTES = 3.5 * 1024 * 1024; // decoded cap, coherent with the 5mb base64 body limit
 
 // Naive in-memory per-email throttle. Resets on cold start — good enough behind
 // the email allowlist; not a substitute for a real limiter at scale.

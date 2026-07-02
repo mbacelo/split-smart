@@ -1,50 +1,61 @@
-const CACHE_NAME = 'splitsmart-v15';
-const urlsToCache = [
-  './',
-  './index.html',
-  './manifest.json',
-  './favicon-32.png',
-  './favicon-48.png',
-  './app-icon-192.png',
-  './app-icon-512.png'
-];
+// Runtime-cached, network-first service worker.
+//
+// Every successful same-origin GET response is copied into a runtime cache as
+// it's fetched, so the app shell AND the hashed JS/CSS bundles it references
+// are cached together — an offline launch replays the last working version
+// (the old precache-list approach cached index.html but not the hashed bundles
+// it pointed at, so offline loads produced a broken shell). Network wins
+// whenever it's available, so deploys are picked up immediately and no manual
+// cache-version bump is needed: hashed asset URLs are immutable, and stale
+// entries just sit unused. The cache grows a little with each deploy; browsers
+// evict under storage pressure, which is acceptable at this app's size.
+const RUNTIME_CACHE = 'splitsmart-runtime-v1';
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(urlsToCache))
-  );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(clients.claim());
+  // Drop caches from older SW versions (including the old precache scheme).
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    caches.keys().then((names) =>
+      Promise.all(names.filter((n) => n !== RUNTIME_CACHE).map((n) => caches.delete(n)))
+    )
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle navigations/static GETs. Never intercept API calls or non-GET
-  // requests (e.g. the POST to /api/analyze-receipt): caches.match on those
-  // resolves undefined, which would turn a transient network error into a hard
-  // failure. Let the browser handle them directly.
-  if (event.request.method !== 'GET' || event.request.url.includes('/api/')) return;
+  // Only handle same-origin GETs. Never intercept API calls, non-GET requests
+  // (e.g. the POST to /api/analyze-receipt), or cross-origin requests (the GIS
+  // script, Google fonts/photos) — let the browser handle those directly.
+  const url = new URL(event.request.url);
+  if (
+    event.request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith('/api/')
+  ) return;
 
-  // Simple network-first approach to satisfy installability without complex
-  // offline logic. Fall back to cache only when the network fetch fails AND we
-  // actually have a cached copy.
   event.respondWith(
-    fetch(event.request).catch(async () =>
-      (await caches.match(event.request)) || Response.error()
-    )
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          event.waitUntil(
+            caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, copy))
+          );
+        }
+        return response;
+      })
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        // Offline navigation with no exact match: fall back to the cached shell.
+        if (event.request.mode === 'navigate') {
+          const shell = (await caches.match('./')) || (await caches.match('./index.html'));
+          if (shell) return shell;
+        }
+        return Response.error();
+      })
   );
 });

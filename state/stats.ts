@@ -24,7 +24,10 @@ export interface SplitStats {
   adjustmentFactor: number;
 }
 
-const toCents = (amount: number): number => Math.round(amount * 100);
+// The app's core money primitive: all splitting math runs on integer cents.
+// Anything converting dollars↔cents must go through these, not ad-hoc rounding.
+export const toCents = (amount: number): number => Math.round(amount * 100);
+export const fromCents = (cents: number): number => cents / 100;
 
 // Split `cents` evenly across `n` people, handing the leftover pennies out one
 // each so the parts sum back to `cents` exactly. `offset` rotates which

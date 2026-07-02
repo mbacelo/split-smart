@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { RotateCcw } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -27,6 +28,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  // Keep Tab inside the dialog while it's open; restore focus on close.
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen);
+
   // Escape cancels; Enter confirms — standard dialog affordances.
   useEffect(() => {
     if (!isOpen) return;
@@ -54,6 +58,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       aria-label={title}
     >
       <div
+        ref={dialogRef}
         className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >

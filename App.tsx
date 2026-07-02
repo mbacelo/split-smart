@@ -2,7 +2,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
-import { getUser, getUserFirstName, isAuthResolving, subscribe, initGoogleSignIn, signOut, AuthUser } from './services/auth';
+import { getUser, getUserFirstName, signOut } from './services/auth';
+import { useAuth } from './hooks/useAuth';
+import { useSessionPersistence } from './hooks/useSessionPersistence';
+import { useEditSnapshot } from './hooks/useEditSnapshot';
 import { Receipt, Check, RotateCcw, AlertCircle, LogOut } from 'lucide-react';
 import { formatCurrency } from './utils/currency';
 import { makeId } from './utils/id';
@@ -13,7 +16,7 @@ import { SplittingStep } from './components/SplittingStep';
 import { computeStats } from './state/stats';
 import { createPerson } from './components/personColors';
 import { pickContacts } from './utils/contacts';
-import { getInitialPeople, makeInitialState, savePeople, clearPeople, saveSession, saveSessionImage, hasSavedPeople } from './state/session';
+import { getInitialPeople, makeInitialState, savePeople, clearPeople, hasSavedPeople } from './state/session';
 
 export default function App() {
   const [state, setState] = useState<AppState>(makeInitialState);
@@ -30,51 +33,22 @@ export default function App() {
   // Transient UI flag (not persisted): flips the item list between assign mode
   // and edit mode where rows become editable name/qty/price fields.
   const [isEditingItems, setIsEditingItems] = useState(false);
-  // Snapshot of items/assignments taken when edit mode opens. Edits apply live,
-  // so Cancel restores this snapshot; Done (commit) just discards it.
-  const editSnapshot = useRef<Pick<AppState, 'items' | 'assignments' | 'unitWeights'> | null>(null);
-  // Same idea for the People list: snapshot people + assignments when inline
-  // people-edit mode opens, so Cancel can revert renames/removes/adds (which
-  // otherwise persist live).
-  const peopleSnapshot = useRef<Pick<AppState, 'people' | 'assignments' | 'unitWeights'> | null>(null);
+  // Edits apply live, so entering an edit mode snapshots the affected slice and
+  // Cancel restores it — one snapshot for the items list, one for People.
+  const itemsSnapshot = useEditSnapshot<Pick<AppState, 'items' | 'assignments' | 'unitWeights'>>();
+  const peopleSnapshot = useEditSnapshot<Pick<AppState, 'people' | 'assignments' | 'unitWeights'>>();
 
-  // Auth: subscribe to sign-in state from the Google Identity wrapper.
-  const [user, setUser] = useState<AuthUser | null>(() => getUser());
-  const [resolvingAuth, setResolvingAuth] = useState<boolean>(() => isAuthResolving());
-  const signInButtonRef = useRef<HTMLDivElement>(null);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const accountMenuRef = useRef<HTMLDivElement>(null);
-  // Why the sign-in button can't be shown, if it can't: 'config' when the app
-  // is missing its Google client id (a deploy misconfiguration), 'unavailable'
-  // when the Google Identity script never loaded (blocked/offline). Either way
-  // we surface a message so the sign-in screen is never just a dead logo.
-  const [signInError, setSignInError] = useState<'config' | 'unavailable' | null>(null);
-
-  useEffect(() => subscribe(() => {
-    setUser(getUser());
-    setResolvingAuth(isAuthResolving());
-  }), []);
-
-  // Close the account dropdown on outside click or Escape.
-  useEffect(() => {
-    if (!accountMenuOpen) return;
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
-        setAccountMenuOpen(false);
-      }
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setAccountMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [accountMenuOpen]);
+  // Google Sign-In: signed-in user, launch spinner, GIS button container, and
+  // the account dropdown. All auth plumbing lives in the hook.
+  const {
+    user,
+    resolvingAuth,
+    signInError,
+    signInButtonRef,
+    accountMenuOpen,
+    setAccountMenuOpen,
+    accountMenuRef,
+  } = useAuth();
 
   // First-time visitors sign in after mount, when the people list is still the
   // untouched default. Seed Person #1 with their first name (and Google photo,
@@ -92,41 +66,6 @@ export default function App() {
     });
   }, [user]);
 
-  // Initialize GIS whenever we're signed out (this also fires the silent
-  // re-auth prompt for remembered users) and render the fallback Sign-In
-  // button. Poll briefly in case the script loads after mount.
-  useEffect(() => {
-    if (user || !signInButtonRef.current) return;
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-    if (!clientId) {
-      // No client id configured — GIS can't be initialized at all. Stop the
-      // launch spinner and explain, rather than leaving an empty container.
-      setSignInError('config');
-      setResolvingAuth(false);
-      return;
-    }
-    setSignInError(null);
-    let cancelled = false;
-    // Poll for the GIS script for a bounded number of attempts (~6s). If it
-    // never appears (blocked, offline, CSP), give up and show a retry message
-    // instead of polling forever behind a hidden container.
-    let attempts = 0;
-    const MAX_ATTEMPTS = 30;
-    const tryRender = () => {
-      if (cancelled || !signInButtonRef.current) return;
-      if ((window as any).google?.accounts?.id) {
-        initGoogleSignIn(clientId, signInButtonRef.current);
-      } else if (attempts++ < MAX_ATTEMPTS) {
-        setTimeout(tryRender, 200);
-      } else {
-        setSignInError('unavailable');
-        setResolvingAuth(false);
-      }
-    };
-    tryRender();
-    return () => { cancelled = true; };
-  }, [user]);
-
   // Sync activePersonId if current people list changes
   useEffect(() => {
     if (!activePersonId && state.people.length > 0) {
@@ -136,19 +75,8 @@ export default function App() {
     }
   }, [state.people, activePersonId]);
 
-  // Persist the in-progress split session so a refresh doesn't lose work
-  // (and force another paid AI call). Cleared automatically when not splitting.
-  // The receiptImage is deliberately NOT in the deps: it can be several MB and
-  // changes only once per receipt, so it's written by its own effect below
-  // rather than re-serialized to localStorage on every assignment tap/keystroke.
-  useEffect(() => {
-    saveSession(state);
-  }, [state.step, state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.unitWeights, state.manualTotalOverride]);
-
-  // Persist the receipt image separately, only when it actually changes.
-  useEffect(() => {
-    saveSessionImage(state.receiptImage);
-  }, [state.receiptImage]);
+  // Persist the in-progress split (and its receipt image, on a separate key).
+  useSessionPersistence(state);
 
   // Toast timeout
   useEffect(() => {
@@ -192,6 +120,8 @@ export default function App() {
     } catch (err: any) {
       // A user-initiated cancel already reset the state — don't surface it.
       if (err?.name === 'AbortError') return;
+      // Keep receiptImage so the error banner can offer "Try again" without
+      // making the user re-shoot the photo for a transient failure.
       setState(prev => ({
         ...prev,
         step: 'upload',
@@ -373,20 +303,19 @@ export default function App() {
         });
         return { ...prev, items: kept, assignments, unitWeights };
       });
-      editSnapshot.current = null;
+      itemsSnapshot.discard();
       setIsEditingItems(false);
     } else {
-      editSnapshot.current = { items: state.items, assignments: state.assignments, unitWeights: state.unitWeights };
+      itemsSnapshot.take({ items: state.items, assignments: state.assignments, unitWeights: state.unitWeights });
       setIsEditingItems(true);
     }
   };
 
   // Abandon edits: restore the snapshot taken when edit mode opened, then leave.
   const cancelEditItems = () => {
-    if (editSnapshot.current) {
-      const snap = editSnapshot.current;
+    const snap = itemsSnapshot.restore();
+    if (snap) {
       setState(prev => ({ ...prev, items: snap.items, assignments: snap.assignments, unitWeights: snap.unitWeights }));
-      editSnapshot.current = null;
     }
     setIsEditingItems(false);
   };
@@ -395,17 +324,16 @@ export default function App() {
   // revert. Renames/removes/adds save live, so we capture assignments too (a
   // removal prunes them).
   const startEditPeople = () => {
-    peopleSnapshot.current = { people: state.people, assignments: state.assignments, unitWeights: state.unitWeights };
+    peopleSnapshot.take({ people: state.people, assignments: state.assignments, unitWeights: state.unitWeights });
   };
 
   // Abandon people edits: restore the snapshot to state and re-persist it,
   // undoing any live saves made while editing.
   const cancelEditPeople = () => {
-    const snap = peopleSnapshot.current;
+    const snap = peopleSnapshot.restore();
     if (snap) {
       setState(prev => ({ ...prev, people: snap.people, assignments: snap.assignments, unitWeights: snap.unitWeights }));
       savePeople(snap.people);
-      peopleSnapshot.current = null;
     }
   };
 
@@ -607,7 +535,10 @@ export default function App() {
       } catch (err: any) {
         // Dismissing the native share sheet rejects with AbortError — that's a
         // normal user action, not a failure, so don't surface it.
-        if (err?.name !== 'AbortError') console.error('Error sharing:', err);
+        if (err?.name !== 'AbortError') {
+          console.error('Error sharing:', err);
+          notify("Sharing failed. Please try again.", 'error');
+        }
       }
     } else {
       try {
@@ -794,9 +725,22 @@ export default function App() {
 
         {/* Error State */}
         {state.error && (
-          <div className="m-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center justify-between">
+          <div className="m-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center justify-between gap-3">
             <span>{state.error}</span>
-            <button onClick={() => setState(s => ({ ...s, error: null }))} className="text-sm underline font-semibold">Dismiss</button>
+            <div className="flex items-center gap-4 shrink-0">
+              {/* Retry with the retained photo so a transient failure doesn't
+                  force the user to re-shoot the receipt. */}
+              {state.step === 'upload' && state.receiptImage && (
+                <button
+                  onClick={() => void handleImageSelected(state.receiptImage!)}
+                  className="flex items-center gap-1.5 text-sm font-semibold bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Try again
+                </button>
+              )}
+              <button onClick={() => setState(s => ({ ...s, error: null }))} className="text-sm underline font-semibold">Dismiss</button>
+            </div>
           </div>
         )}
 

@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { ReceiptItem } from '../types';
 import { Trash2 } from 'lucide-react';
+import { blurOnWheel } from '../utils/input';
 
 export type ItemPatch = Partial<Pick<ReceiptItem, 'name' | 'quantity' | 'originalPrice'>>;
 
@@ -32,6 +33,7 @@ export const ItemEditRow: React.FC<{
         aria-label="Quantity"
         value={item.quantity || ''}
         onChange={(e) => onUpdate(item.id, { quantity: parseInt(e.target.value, 10) || 1 })}
+        onWheel={blurOnWheel}
         onKeyDown={blurOnEnter}
         className="w-12 shrink-0 text-center bg-slate-50 border border-slate-300 rounded-lg py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-bold text-slate-700 shadow-sm"
       />
@@ -66,6 +68,7 @@ export const ItemEditRow: React.FC<{
           placeholder="0.00"
           value={item.originalPrice || ''}
           onChange={(e) => onUpdate(item.id, { originalPrice: parseFloat(e.target.value) || 0 })}
+          onWheel={blurOnWheel}
           onKeyDown={(e) => {
             if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); onAddRow(); }
           }}

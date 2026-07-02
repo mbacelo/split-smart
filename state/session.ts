@@ -16,8 +16,8 @@ const SESSION_KEY = 'splitSmart_session';
 const IMAGE_KEY = 'splitSmart_sessionImage';
 
 // Bump when the persisted session shape changes so stale data is discarded
-// rather than rehydrated into an incompatible state.
-const SESSION_VERSION = 6;
+// rather than rehydrated into an incompatible state. Exported for tests only.
+export const SESSION_VERSION = 6;
 
 interface PersistedSession {
   v: number;
@@ -57,8 +57,8 @@ export const hasSavedPeople = (): boolean => {
 
 // Returns a persisted session if one exists and is still mid-split. We never
 // restore the 'analyzing' step (a refresh during analysis lost the in-flight
-// request) — fall back to 'upload' so the user can retry.
-const loadSession = (): PersistedSession | null => {
+// request) — fall back to 'upload' so the user can retry. Exported for tests.
+export const loadSession = (): PersistedSession | null => {
   try {
     const saved = localStorage.getItem(SESSION_KEY);
     if (!saved) return null;

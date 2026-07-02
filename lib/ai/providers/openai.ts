@@ -30,8 +30,19 @@ const RECEIPT_SCHEMA = {
  */
 export const openAIProvider: AIProvider = {
   async analyzeReceipt(cleanBase64: string, mimeType: string): Promise<ReceiptAnalysis> {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const model = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+    // Fail fast on misconfiguration: a fallback model string would surface as an
+    // opaque provider error instead of pointing at the missing env var.
+    if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set.");
+    const model = process.env.OPENAI_MODEL;
+    if (!model) throw new Error("OPENAI_MODEL is not set.");
+
+    // Timeout stays under Vercel's 30s maxDuration so a hung provider call
+    // returns a controlled error instead of the platform killing the function.
+    const client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      timeout: 25_000,
+      maxRetries: 1,
+    });
     // GPT-5.x reasoning effort: none|minimal|low|medium|high|xhigh. Unset = model default.
     const reasoningEffort = process.env.OPENAI_REASONING_EFFORT as
       | OpenAI.ReasoningEffort
@@ -40,6 +51,9 @@ export const openAIProvider: AIProvider = {
     const response = await client.chat.completions.create({
       model,
       ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+      // Cost ceiling per request. Receipt JSON is small (~500 tokens even for a
+      // long receipt); the headroom is for reasoning tokens, which count here.
+      max_completion_tokens: 2000,
       messages: [
         {
           role: "user",
@@ -47,7 +61,10 @@ export const openAIProvider: AIProvider = {
             { type: "text", text: RECEIPT_PROMPT },
             {
               type: "image_url",
-              image_url: { url: `data:${mimeType};base64,${cleanBase64}` },
+              // "auto" detail: receipts need legible text, so we let the API pick
+              // the tiling. Image tokens dominate cost — if bills ever get cheap
+              // extraction wrong, try "high"; if cost matters more, try "low".
+              image_url: { url: `data:${mimeType};base64,${cleanBase64}`, detail: "auto" },
             },
           ],
         },
@@ -65,6 +82,19 @@ export const openAIProvider: AIProvider = {
     const text = response.choices[0]?.message?.content;
     if (!text) throw new Error("No response from AI.");
 
-    return JSON.parse(text) as ReceiptAnalysis;
+    // Strict json_schema makes malformed output unlikely, not impossible
+    // (refusals, truncation at the token cap, model swaps). Guard so those
+    // surface as a controlled error rather than a crash downstream.
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`AI returned non-JSON output (finish_reason: ${response.choices[0]?.finish_reason}).`);
+    }
+    const analysis = parsed as ReceiptAnalysis;
+    if (!analysis || !Array.isArray(analysis.items) || typeof analysis.total !== "number") {
+      throw new Error("AI returned JSON that doesn't match the receipt schema.");
+    }
+    return analysis;
   },
 };

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 // Full-screen receipt preview for cross-checking the AI's reading against the
 // photo. Implements its own gesture-based zoom on the image so it works the
@@ -22,6 +23,9 @@ export const ReceiptPreview: React.FC<{ image: string; onClose: () => void }> = 
   const pinchStart = useRef<{ dist: number; scale: number } | null>(null);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const lastTap = useRef(0);
+
+  // Keep Tab inside the overlay while it's open; restore focus on close.
+  const overlayRef = useFocusTrap<HTMLDivElement>(true);
 
   // Close on Escape, like the other overlays.
   useEffect(() => {
@@ -97,6 +101,7 @@ export const ReceiptPreview: React.FC<{ image: string; onClose: () => void }> = 
 
   return (
     <div
+      ref={overlayRef}
       onClick={() => { if (!zoomed) onClose(); }}
       className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm overflow-hidden animate-fade-in"
       role="dialog"

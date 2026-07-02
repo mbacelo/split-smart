@@ -1,6 +1,7 @@
 import React from 'react';
 import { Person } from '../types';
-import { ItemAdjustment, splitCentsWeighted } from '../state/stats';
+import { ItemAdjustment, splitCentsWeighted, toCents, fromCents } from '../state/stats';
+import { blurOnWheel } from '../utils/input';
 import { formatCurrency } from '../utils/currency';
 import { getColorClasses } from './personColors';
 import { PersonAvatar } from './PersonAvatar';
@@ -30,7 +31,7 @@ export const UnitAllocationPanel: React.FC<{
   // Live preview: split the item's adjusted cents by the current weights across
   // the people who have a positive weight, mirroring computeStats.
   const participants = people.filter((p) => weightFor(p.id) > 0);
-  const cents = Math.round(item.adjustedPrice * 100);
+  const cents = toCents(item.adjustedPrice);
   const shareCents = splitCentsWeighted(cents, participants.map((p) => weightFor(p.id)));
   const shareByPid: Record<string, number> = {};
   participants.forEach((p, i) => { shareByPid[p.id] = shareCents[i]; });
@@ -69,7 +70,7 @@ export const UnitAllocationPanel: React.FC<{
                 </PersonAvatar>
                 <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700">{person.name}</span>
                 <span className={`text-xs font-semibold w-16 text-right ${w > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                  {w > 0 ? formatCurrency(share / 100) : '—'}
+                  {w > 0 ? formatCurrency(fromCents(share)) : '—'}
                 </span>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
@@ -88,6 +89,7 @@ export const UnitAllocationPanel: React.FC<{
                     value={w || ''}
                     placeholder="0"
                     onChange={(e) => onSetUnitWeight(item.id, person.id, parseInt(e.target.value, 10) || 0)}
+                    onWheel={blurOnWheel}
                     aria-label={`Units for ${person.name}`}
                     className="w-10 text-center bg-white border border-slate-200 rounded-lg py-1 font-bold text-slate-700 text-sm focus:ring-2 focus:ring-amber-400 outline-none"
                   />
