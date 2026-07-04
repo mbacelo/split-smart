@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
 import { getUser, getUserFirstName, signOut } from './services/auth';
+import { trackEvent } from './services/analytics';
 import { useAuth } from './hooks/useAuth';
 import { useSessionPersistence } from './hooks/useSessionPersistence';
 import { useEditSnapshot } from './hooks/useEditSnapshot';
@@ -143,6 +144,7 @@ export default function App() {
   // Lands directly in edit mode with one empty row ready to type into, and flags
   // manualEntry so the total tracks the sum of items instead of a scanned total.
   const startManualEntry = () => {
+    trackEvent('enter-items-manually');
     setState(prev => ({
       ...prev,
       step: 'splitting',
