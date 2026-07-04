@@ -1,39 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <!-- viewport-fit=cover: without it, env(safe-area-inset-*) is 0 on notched
+
+<head>
+  <!-- Google Tag Manager -->
+  <script>(function (w, d, s, l, i) {
+      w[l] = w[l] || []; w[l].push({
+        'gtm.start':
+          new Date().getTime(), event: 'gtm.js'
+      }); var f = d.getElementsByTagName(s)[0],
+        j = d.createElement(s), dl = l != 'dataLayer' ? '&l=' + l : ''; j.async = true; j.src =
+          'https://www.googletagmanager.com/gtm.js?id=' + i + dl; f.parentNode.insertBefore(j, f);
+    })(window, document, 'script', 'dataLayer', 'GTM-W9HFG2NJ');</script>
+  <!-- End Google Tag Manager -->
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover: without it, env(safe-area-inset-*) is 0 on notched
          iPhones and the bottom bar's safe-area padding does nothing. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>SplitSmart AI</title>
-    
-    <!-- Favicon & App Icons -->
-    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-    <link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png">
-    <link rel="apple-touch-icon" href="app-icon-192.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>SplitSmart AI</title>
 
-    <!-- Meta Tags for Social Sharing -->
-    <meta property="og:title" content="SplitSmart AI Expense Splitter">
-    <meta property="og:description" content="Effortlessly split bills and receipts using AI. Upload a photo and assign items to friends.">
-    <meta property="og:image" content="app-icon-512.png">
-    <meta property="og:type" content="website">
+  <!-- Favicon & App Icons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png">
+  <link rel="apple-touch-icon" href="app-icon-192.png">
 
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="SplitSmart AI Expense Splitter">
-    <meta name="twitter:description" content="Effortlessly split bills and receipts using AI. Upload a photo and assign items to friends.">
-    <meta name="twitter:image" content="app-icon-512.png">
+  <!-- Meta Tags for Social Sharing -->
+  <meta property="og:title" content="SplitSmart AI Expense Splitter">
+  <meta property="og:description"
+    content="Effortlessly split bills and receipts using AI. Upload a photo and assign items to friends.">
+  <meta property="og:image" content="app-icon-512.png">
+  <meta property="og:type" content="website">
 
-    <meta name="theme-color" content="#f8fafc" />
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="SplitSmart">
-    <link rel="manifest" href="manifest.json" />
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="SplitSmart AI Expense Splitter">
+  <meta name="twitter:description"
+    content="Effortlessly split bills and receipts using AI. Upload a photo and assign items to friends.">
+  <meta name="twitter:image" content="app-icon-512.png">
+
+  <meta name="theme-color" content="#f8fafc" />
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="SplitSmart">
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
-  <body>
-    <div id="root"></div>
+
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-W9HFG2NJ" height="0" width="0"
+      style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+  <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>
