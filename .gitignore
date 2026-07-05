@@ -27,3 +27,7 @@ dist-ssr
 
 # Playwright MCP browser artifacts
 .playwright-mcp/
+
+# Env files (line added by Vercel CLI); keep the tracked example file.
+.env*
+!.env.local.example
