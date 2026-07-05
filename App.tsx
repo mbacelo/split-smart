@@ -1,16 +1,18 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from './types';
-import { analyzeReceipt } from './services/receiptService';
+import { analyzeReceipt, ApiError } from './services/receiptService';
 import { getUser, getUserFirstName, getSignInMethod, signOut } from './services/auth';
 import { trackEvent, identifyUser } from './services/analytics';
 import { useAuth } from './hooks/useAuth';
 import { useSessionPersistence } from './hooks/useSessionPersistence';
 import { useEditSnapshot } from './hooks/useEditSnapshot';
-import { Receipt, Check, RotateCcw, AlertCircle, LogOut } from 'lucide-react';
+import { Receipt, Check, RotateCcw, AlertCircle, LogOut, LogIn } from 'lucide-react';
 import { formatCurrency } from './utils/currency';
 import { makeId } from './utils/id';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { SignInGate } from './components/SignInGate';
+import { WaitlistPrompt } from './components/WaitlistPrompt';
 import { UploadStep } from './components/UploadStep';
 import { AnalyzingStep } from './components/AnalyzingStep';
 import { SplittingStep } from './components/SplittingStep';
@@ -39,8 +41,20 @@ export default function App() {
   const itemsSnapshot = useEditSnapshot<Pick<AppState, 'items' | 'assignments' | 'unitWeights'>>();
   const peopleSnapshot = useEditSnapshot<Pick<AppState, 'people' | 'assignments' | 'unitWeights'>>();
 
+  // Sign-in is only required for the AI scan, so the app renders for everyone
+  // and this gate opens on demand (scan attempt while signed out, or the
+  // header's Sign in button).
+  const [signInGateOpen, setSignInGateOpen] = useState(false);
+  // Offered when the server rejects a scan with 403 not_allowlisted.
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  // Image picked while signed out, waiting for sign-in to complete so the scan
+  // can resume without the user re-picking the photo.
+  const pendingImageRef = useRef<string | null>(null);
+
   // Google Sign-In: signed-in user, launch spinner, GIS button container, and
-  // the account dropdown. All auth plumbing lives in the hook.
+  // the account dropdown. All auth plumbing lives in the hook. GIS initializes
+  // at mount (silent re-auth for remembered users); the Sign In button renders
+  // only while the gate is open.
   const {
     user,
     resolvingAuth,
@@ -49,7 +63,7 @@ export default function App() {
     accountMenuOpen,
     setAccountMenuOpen,
     accountMenuRef,
-  } = useAuth();
+  } = useAuth(signInGateOpen);
 
   // First-time visitors sign in after mount, when the people list is still the
   // untouched default. Seed Person #1 with their first name (and Google photo,
@@ -110,6 +124,15 @@ export default function App() {
   const analyzeAbortRef = useRef<AbortController | null>(null);
 
   const handleImageSelected = async (base64: string) => {
+    // The AI scan is the only paid/authenticated feature: if the user isn't
+    // signed in yet, hold the image and open the sign-in gate. The effect
+    // below resumes the scan automatically once sign-in completes.
+    if (!user) {
+      pendingImageRef.current = base64;
+      trackEvent('scan-sign-in-prompted');
+      setSignInGateOpen(true);
+      return;
+    }
     trackEvent('receipt-upload-started');
     setState(prev => ({ ...prev, step: 'analyzing', receiptImage: base64, error: null }));
     const controller = new AbortController();
@@ -136,6 +159,14 @@ export default function App() {
     } catch (err: any) {
       // A user-initiated cancel already reset the state — don't surface it.
       if (err?.name === 'AbortError') return;
+      // Not on the allowlist: offer the waitlist instead of a generic error.
+      // Keep the image so an approved user can retry without re-shooting.
+      if (err instanceof ApiError && err.code === 'not_allowlisted') {
+        trackEvent('waitlist-prompted');
+        setState(prev => ({ ...prev, step: 'upload', error: null }));
+        setWaitlistOpen(true);
+        return;
+      }
       trackEvent('receipt-scan-failed', { reason: err?.message || 'unknown' });
       // Keep receiptImage so the error banner can offer "Try again" without
       // making the user re-shoot the photo for a transient failure.
@@ -147,6 +178,24 @@ export default function App() {
     } finally {
       if (analyzeAbortRef.current === controller) analyzeAbortRef.current = null;
     }
+  };
+
+  // Resume a scan that was interrupted by the sign-in gate: as soon as sign-in
+  // completes with a photo still pending, close the gate and analyze it so the
+  // user doesn't have to re-pick the image.
+  useEffect(() => {
+    if (!user || !pendingImageRef.current) return;
+    const pending = pendingImageRef.current;
+    pendingImageRef.current = null;
+    setSignInGateOpen(false);
+    void handleImageSelected(pending);
+  }, [user]);
+
+  // Dismissing the gate abandons the pending scan (the user chose not to sign
+  // in); manual entry and the rest of the app stay fully usable.
+  const closeSignInGate = () => {
+    pendingImageRef.current = null;
+    setSignInGateOpen(false);
   };
 
   // Abort the in-flight analysis and return to the upload step.
@@ -613,63 +662,20 @@ export default function App() {
 
   const activePerson = state.people.find(p => p.id === activePersonId);
 
-  // Gate the whole app behind Google Sign-In.
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center px-6 animate-fade-in">
-        <div className="bg-indigo-600 p-3 rounded-2xl text-white mb-6">
-          <Receipt className="w-8 h-8" />
-        </div>
-        <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 mb-2">
-          SplitSmart
-        </h1>
-        <p className="text-slate-600 text-center max-w-sm mb-8">
-          Sign in to split bills with AI. Access is currently limited to approved accounts.
-        </p>
-        {resolvingAuth && (
-          <div className="flex items-center gap-3 text-slate-500" role="status" aria-live="polite">
-            <svg className="animate-spin w-5 h-5 text-indigo-600" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-            </svg>
-            <span className="text-sm font-medium">Signing you in…</span>
-          </div>
-        )}
-        {/* Kept mounted (hidden while resolving or errored) so GIS can still
-            initialize and run the silent re-auth prompt; revealed if the silent
-            attempt fails. Hidden when we know no button can render. */}
-        <div ref={signInButtonRef} className={resolvingAuth || signInError ? 'hidden' : ''} />
-
-        {/* Fallback so the screen is never a dead logo when sign-in can't load. */}
-        {signInError && !resolvingAuth && (
-          <div className="mt-2 max-w-sm w-full text-center" role="alert">
-            <div className="flex items-start gap-3 text-left bg-red-50 border border-red-200 text-red-700 rounded-xl p-4">
-              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-              <div className="text-sm">
-                {signInError === 'config' ? (
-                  <p>Sign-in isn't configured for this deployment. Please contact the app owner.</p>
-                ) : (
-                  <p>Couldn't reach Google Sign-In. Check your connection and try again.</p>
-                )}
-              </div>
-            </div>
-            {signInError === 'unavailable' && (
-              <button
-                onClick={() => window.location.reload()}
-                className="mt-4 inline-flex items-center gap-2 bg-indigo-600 text-white font-semibold py-2.5 px-5 rounded-xl hover:bg-indigo-700 transition-all shadow-sm active:scale-95"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>Try again</span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-0 lg:pb-20">
+      {/* Sign-in gate: opens on demand (scan attempt while signed out, or the
+          header button). The rest of the app works without an account. */}
+      <SignInGate
+        isOpen={signInGateOpen && !user}
+        resolvingAuth={resolvingAuth}
+        signInError={signInError}
+        signInButtonRef={signInButtonRef}
+        onClose={closeSignInGate}
+      />
+
+      <WaitlistPrompt isOpen={waitlistOpen} onClose={() => setWaitlistOpen(false)} />
+
       <ConfirmDialog
         isOpen={showResetConfirm}
         title="Start over?"
@@ -727,7 +733,18 @@ export default function App() {
               </button>
             )}
 
-            {/* Account menu */}
+            {/* Account menu (signed in) or a Sign in entry point (signed out).
+                Signing in is optional — it's only needed for the AI scan. */}
+            {!user ? (
+              <button
+                onClick={() => setSignInGateOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                title="Sign in to scan receipts with AI"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Sign in</span>
+              </button>
+            ) : (
             <div className="relative" ref={accountMenuRef}>
               <button
                 onClick={() => setAccountMenuOpen((o) => !o)}
@@ -766,6 +783,7 @@ export default function App() {
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       </header>

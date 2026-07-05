@@ -170,10 +170,12 @@ function finishResolving() {
 }
 
 /**
- * Initialize Google Identity Services and render a Sign In button into `target`.
- * Called once the GIS script and the DOM node are ready.
+ * Initialize Google Identity Services and run the silent re-auth prompt for
+ * remembered users. Called once at app launch (when the GIS script is ready) —
+ * sign-in is no longer a wall, so this must not depend on any sign-in UI being
+ * mounted. Button rendering is separate (renderSignInButton).
  */
-export const initGoogleSignIn = (clientId: string, target: HTMLElement) => {
+export const initAuth = (clientId: string) => {
   const google = (window as any).google;
   if (!google?.accounts?.id) return;
 
@@ -194,7 +196,7 @@ export const initGoogleSignIn = (clientId: string, target: HTMLElement) => {
   // If this user asked to be remembered but we have no valid token (expired or
   // a fresh launch), try to obtain a new ID token silently — no UI, no click.
   // The notification callback tells us when the silent attempt can't proceed
-  // (e.g. no Google session) so we can drop the loading state and show the button.
+  // (e.g. no Google session) so we can drop the loading state.
   if (isRemembered() && !getIdToken()) {
     authResolving = true;
     google.accounts.id.prompt((notification: any) => {
@@ -205,7 +207,15 @@ export const initGoogleSignIn = (clientId: string, target: HTMLElement) => {
   } else {
     finishResolving();
   }
+};
 
+/**
+ * Render the GIS Sign In button into `target`. Called whenever sign-in UI is
+ * actually shown (the sign-in gate). Requires initAuth to have run first.
+ */
+export const renderSignInButton = (target: HTMLElement) => {
+  const google = (window as any).google;
+  if (!google?.accounts?.id || !initializedClientId) return;
   google.accounts.id.renderButton(target, {
     theme: "filled_blue",
     size: "large",

@@ -25,7 +25,11 @@ export type AnalyticsEvent =
   | 'discount-set'
   | 'summary-shared'
   | 'summary-share-cancelled'
-  | 'summary-share-failed';
+  | 'summary-share-failed'
+  | 'scan-sign-in-prompted'
+  | 'waitlist-prompted'
+  | 'waitlist-joined'
+  | 'waitlist-join-failed';
 
 /**
  * Initialize Amplitude once at app startup. Reads the client-side API key from

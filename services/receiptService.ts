@@ -1,6 +1,19 @@
 import { ProcessedReceipt } from "../types";
 import { getIdToken } from "./auth";
 
+/** API failure carrying the HTTP status and the server's machine-readable
+ * `code` (e.g. "not_allowlisted"), so callers can branch on the cause. */
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 /**
  * Sends the receipt image to our serverless endpoint, which holds the AI key
  * and runs the analysis. The browser never talks to an AI provider directly.
@@ -38,13 +51,15 @@ export const analyzeReceipt = async (imageBase64: string, signal?: AbortSignal):
 
   if (!res.ok) {
     let message = "Failed to analyze receipt. Try a clearer photo.";
+    let code: string | undefined;
     try {
       const data = await res.json();
       if (data?.error) message = data.error;
+      if (typeof data?.code === "string") code = data.code;
     } catch {
       /* ignore non-JSON error bodies */
     }
-    throw new Error(message);
+    throw new ApiError(message, res.status, code);
   }
 
   return (await res.json()) as ProcessedReceipt;

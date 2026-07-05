@@ -14,26 +14,39 @@ const SERVER_ENV_KEYS = [
   'OPENAI_REASONING_EFFORT',
   'GOOGLE_CLIENT_ID',
   'ALLOWED_EMAILS',
+  'DATABASE_URL',
 ] as const;
 
+// The /api endpoints served locally by the dev plugin. Add new api/*.ts
+// handlers here so `npm run dev` picks them up (production is untouched —
+// Vercel discovers them by filename).
+const API_ENDPOINTS = ['analyze-receipt', 'join-waitlist'] as const;
+
 /**
- * Dev-only plugin: serves /api/analyze-receipt locally by running the SAME
- * handler that Vercel runs in production (api/analyze-receipt.ts), so `npm run
- * dev` gives us UI + API together without the Vercel CLI. Env comes from
- * .env.local via loadEnv — local dev is authoritative and never round-trips to
- * a linked cloud project.
+ * Dev-only plugin: serves /api/* locally by running the SAME handlers that
+ * Vercel runs in production (api/<name>.ts), so `npm run dev` gives us UI +
+ * API together without the Vercel CLI. Env comes from .env.local via loadEnv —
+ * local dev is authoritative and never round-trips to a linked cloud project.
  */
 function devApiPlugin(env: Record<string, string>): Plugin {
   return {
-    name: 'dev-api-analyze-receipt',
+    name: 'dev-api',
     apply: 'serve', // dev server only; production build is untouched
     configureServer(server) {
-      // Make the server-side vars visible to the handler via process.env.
+      // Make the server-side vars visible to the handlers via process.env.
       for (const key of SERVER_ENV_KEYS) {
         if (env[key] !== undefined) process.env[key] = env[key];
       }
 
-      server.middlewares.use('/api/analyze-receipt', async (req: IncomingMessage, res: ServerResponse) => {
+      server.middlewares.use('/api', async (req: IncomingMessage, res: ServerResponse) => {
+        // With a mounted middleware, req.url is the path *after* /api.
+        const name = (req.url || '').split('?')[0].replace(/^\/+|\/+$/g, '');
+        if (!(API_ENDPOINTS as readonly string[]).includes(name)) {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Not found.' }));
+          return;
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           res.setHeader('Content-Type', 'application/json');
@@ -64,11 +77,11 @@ function devApiPlugin(env: Record<string, string>): Plugin {
           } as any;
 
           // Load the real handler on demand; Vite transpiles the TS + .js ESM
-          // specifiers, and its lib/ai import chain resolves as in production.
-          const mod = await server.ssrLoadModule('/api/analyze-receipt.ts');
+          // specifiers, and its lib/ import chain resolves as in production.
+          const mod = await server.ssrLoadModule(`/api/${name}.ts`);
           await mod.default(vReq, vRes);
         } catch (err) {
-          console.error('[dev-api] analyze-receipt error:', err);
+          console.error(`[dev-api] ${name} error:`, err);
           if (!res.writableEnded) {
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json');

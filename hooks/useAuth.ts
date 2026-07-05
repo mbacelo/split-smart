@@ -1,20 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import { getUser, isAuthResolving, subscribe, initGoogleSignIn, AuthUser } from '../services/auth';
+import { getUser, isAuthResolving, subscribe, initAuth, renderSignInButton, AuthUser } from '../services/auth';
 
 // Everything Google Sign-In related that App renders from: the signed-in user,
 // the launch spinner state, the GIS button container, the account dropdown, and
 // why sign-in can't be shown when it can't. Kept out of App so the bill-split
 // logic isn't interleaved with auth plumbing.
-export function useAuth() {
+//
+// GIS is initialized at mount (so remembered users are silently re-authed at
+// launch even though the app no longer starts on a sign-in wall); the actual
+// Sign In button renders only while `signInOpen` — the sign-in gate — is shown.
+export function useAuth(signInOpen: boolean) {
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
   const [resolvingAuth, setResolvingAuth] = useState<boolean>(() => isAuthResolving());
   const signInButtonRef = useRef<HTMLDivElement>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  // Flipped once the GIS script has loaded and initAuth ran — the button can
+  // only render after that.
+  const [gisReady, setGisReady] = useState(false);
   // Why the sign-in button can't be shown, if it can't: 'config' when the app
   // is missing its Google client id (a deploy misconfiguration), 'unavailable'
   // when the Google Identity script never loaded (blocked/offline). Either way
-  // we surface a message so the sign-in screen is never just a dead logo.
+  // we surface a message so the sign-in gate is never just a dead logo.
   const [signInError, setSignInError] = useState<'config' | 'unavailable' | null>(null);
 
   useEffect(() => subscribe(() => {
@@ -43,11 +50,9 @@ export function useAuth() {
     };
   }, [accountMenuOpen]);
 
-  // Initialize GIS whenever we're signed out (this also fires the silent
-  // re-auth prompt for remembered users) and render the fallback Sign-In
-  // button. Poll briefly in case the script loads after mount.
+  // Initialize GIS once at mount (this also fires the silent re-auth prompt
+  // for remembered users). Poll briefly in case the script loads after mount.
   useEffect(() => {
-    if (user || !signInButtonRef.current) return;
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
     if (!clientId) {
       // No client id configured — GIS can't be initialized at all. Stop the
@@ -56,27 +61,35 @@ export function useAuth() {
       setResolvingAuth(false);
       return;
     }
-    setSignInError(null);
     let cancelled = false;
     // Poll for the GIS script for a bounded number of attempts (~6s). If it
     // never appears (blocked, offline, CSP), give up and show a retry message
-    // instead of polling forever behind a hidden container.
+    // instead of polling forever.
     let attempts = 0;
     const MAX_ATTEMPTS = 30;
-    const tryRender = () => {
-      if (cancelled || !signInButtonRef.current) return;
+    const tryInit = () => {
+      if (cancelled) return;
       if ((window as any).google?.accounts?.id) {
-        initGoogleSignIn(clientId, signInButtonRef.current);
+        initAuth(clientId);
+        setGisReady(true);
       } else if (attempts++ < MAX_ATTEMPTS) {
-        setTimeout(tryRender, 200);
+        setTimeout(tryInit, 200);
       } else {
         setSignInError('unavailable');
         setResolvingAuth(false);
       }
     };
-    tryRender();
+    tryInit();
     return () => { cancelled = true; };
-  }, [user]);
+  }, []);
+
+  // Render the Sign In button whenever the gate is open (and GIS is ready).
+  // The container only exists while the gate is mounted, so this re-runs on
+  // every open rather than once.
+  useEffect(() => {
+    if (!signInOpen || user || !gisReady || !signInButtonRef.current) return;
+    renderSignInButton(signInButtonRef.current);
+  }, [signInOpen, user, gisReady]);
 
   return {
     user,

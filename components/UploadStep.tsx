@@ -18,6 +18,10 @@ export const UploadStep: React.FC<UploadStepProps> = ({ onImageSelected, onManua
     </div>
     <ImageUploader onImageSelected={onImageSelected} onError={onError} />
 
+    {/* Heads-up so the sign-in gate isn't a surprise: only the AI scan needs
+        an account; the rest of the app doesn't. */}
+    <p className="mt-4 text-xs text-slate-400">AI scanning requires signing in with Google.</p>
+
     {/* Escape hatch for when there's no receipt to scan (cash, a verbal tab, a
         bill someone read out). Kept visually secondary so the photo flow stays
         the hero. */}

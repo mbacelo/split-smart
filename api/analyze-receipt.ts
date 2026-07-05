@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { OAuth2Client } from "google-auth-library";
 import { getProvider, toProcessedReceipt } from "../lib/ai/index.js";
+import { verifyUser, makeRateLimiter } from "../lib/server/googleAuth.js";
+import { isEmailAllowed } from "../lib/server/db.js";
 
 // Allow base64 image payloads. The client downscales to ~1600px JPEG (well
 // under 1MB), so 5mb is already generous headroom; keep it low because the
@@ -14,45 +15,17 @@ export const config = {
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_IMAGE_BYTES = 3.5 * 1024 * 1024; // decoded cap, coherent with the 5mb base64 body limit
 
-// Naive in-memory per-email throttle. Resets on cold start — good enough behind
-// the email allowlist; not a substitute for a real limiter at scale.
-const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 15;
-const hits = new Map<string, number[]>();
+const rateLimited = makeRateLimiter(15, 60_000);
 
-const googleClient = new OAuth2Client();
-
-function rateLimited(email: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(email) || []).filter((t) => now - t < RATE_WINDOW_MS);
-  recent.push(now);
-  hits.set(email, recent);
-  return recent.length > RATE_MAX;
-}
-
-/** Verifies the Google ID token and returns the verified email, or null. */
-async function verifyUser(authHeader: string | undefined): Promise<string | null> {
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  const idToken = authHeader.slice("Bearer ".length).trim();
-  try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    if (!payload?.email || !payload.email_verified) return null;
-    return payload.email.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function isAllowed(email: string): boolean {
+// Allowed when either the ALLOWED_EMAILS env var (bootstrap/owner override,
+// also the fallback when the DB is down) or the access_requests table says so.
+async function isAllowed(email: string): Promise<boolean> {
   const allowed = (process.env.ALLOWED_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
-  return allowed.includes(email);
+  if (allowed.includes(email)) return true;
+  return isEmailAllowed(email);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -61,12 +34,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 1. Authenticate
-  const email = await verifyUser(req.headers.authorization);
-  if (!email) {
+  const user = await verifyUser(req.headers.authorization);
+  if (!user) {
     return res.status(401).json({ error: "Sign in to continue." });
   }
-  if (!isAllowed(email)) {
-    return res.status(403).json({ error: "Your account is not on the allowlist." });
+  const { email } = user;
+  if (!(await isAllowed(email))) {
+    // `code` lets the client tell "not on the list" apart from other failures
+    // and offer the waitlist instead of a generic error.
+    return res.status(403).json({ error: "Your account doesn't have access yet.", code: "not_allowlisted" });
   }
   if (rateLimited(email)) {
     return res.status(429).json({ error: "Too many requests. Please slow down." });
