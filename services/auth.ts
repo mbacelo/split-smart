@@ -13,8 +13,15 @@ const STORAGE_KEY = "splitSmart_idToken";
 // short (~1h) lifetime so we know to silently re-authenticate on next launch.
 const REMEMBER_KEY = "splitSmart_remembered";
 
+// How the current credential was obtained — an explicit button click, a silent
+// GIS auto-select/refresh, or a token restored from a previous launch. Consumed
+// by analytics so "signed in" dashboards can separate real sign-ins from
+// session restores.
+export type SignInMethod = "interactive" | "silent" | "restored";
+
 let idToken: string | null = null;
 let user: AuthUser | null = null;
+let signInMethod: SignInMethod | null = null;
 let initializedClientId: string | null = null;
 // Pending timer that fires a silent refresh shortly before the current token
 // expires, so a long-lived session never hits a 401 mid-use.
@@ -44,7 +51,7 @@ function decode(token: string): (AuthUser & { exp: number }) | null {
   }
 }
 
-function setToken(token: string | null) {
+function setToken(token: string | null, method?: SignInMethod) {
   if (token) {
     const decoded = decode(token);
     // Reject already-expired tokens.
@@ -54,6 +61,7 @@ function setToken(token: string | null) {
     }
     idToken = token;
     user = { email: decoded.email, name: decoded.name, picture: decoded.picture };
+    if (method) signInMethod = method;
     authResolving = false;
     localStorage.setItem(STORAGE_KEY, token);
     // Mark this user as remembered so we can silently refresh after the token
@@ -97,6 +105,7 @@ function dropToken() {
 
 function clearToken() {
   dropToken();
+  signInMethod = null;
   if (typeof localStorage !== "undefined") localStorage.removeItem(REMEMBER_KEY);
 }
 
@@ -105,7 +114,7 @@ const isRemembered = (): boolean =>
 
 // Restore a token from a previous launch (persists until it expires).
 const stored = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-if (stored) setToken(stored);
+if (stored) setToken(stored, "restored");
 
 // If the user is remembered but we have no valid token yet, we expect to
 // silently re-authenticate once GIS loads. Start in a "resolving" state so the
@@ -123,6 +132,9 @@ export const getIdToken = (): string | null => {
 };
 
 export const getUser = (): AuthUser | null => user;
+
+/** How the current credential was obtained, or null when signed out. */
+export const getSignInMethod = (): SignInMethod | null => signInMethod;
 
 /** First whitespace-delimited token of the signed-in user's name, or null. */
 export const getUserFirstName = (): string | null => {
@@ -168,7 +180,10 @@ export const initGoogleSignIn = (clientId: string, target: HTMLElement) => {
   if (initializedClientId !== clientId) {
     google.accounts.id.initialize({
       client_id: clientId,
-      callback: (response: { credential: string }) => setToken(response.credential),
+      // `select_by` tells us whether the credential came from an explicit
+      // button click (btn*) or a silent auto-select/refresh (auto, user, fedcm…).
+      callback: (response: { credential: string; select_by?: string }) =>
+        setToken(response.credential, response.select_by?.startsWith("btn") ? "interactive" : "silent"),
       // Let GIS silently re-select the previously remembered account so a
       // returning user doesn't have to click again.
       auto_select: true,

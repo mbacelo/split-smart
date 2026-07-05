@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
-import { getUser, getUserFirstName, signOut } from './services/auth';
+import { getUser, getUserFirstName, getSignInMethod, signOut } from './services/auth';
 import { trackEvent, identifyUser } from './services/analytics';
 import { useAuth } from './hooks/useAuth';
 import { useSessionPersistence } from './hooks/useSessionPersistence';
@@ -68,14 +68,16 @@ export default function App() {
   }, [user]);
 
   // Analytics: once a user is signed in, tie events to them and fire signed-in
-  // exactly once per account (a ref guards against re-fires on re-render/refresh
-  // within the same session).
+  // exactly once per account (a ref guards against re-fires on re-render within
+  // the same page load). The ref resets on reload, so the event still fires per
+  // page load — `method` is what distinguishes a real sign-in ('interactive')
+  // from a silent auto-select or restored session in dashboards.
   const identifiedEmailRef = useRef<string | null>(null);
   useEffect(() => {
     if (!user || identifiedEmailRef.current === user.email) return;
     identifiedEmailRef.current = user.email;
     identifyUser(user.email);
-    trackEvent('signed-in');
+    trackEvent('signed-in', { method: getSignInMethod() ?? 'unknown' });
   }, [user]);
 
   // Sync activePersonId if current people list changes
@@ -178,8 +180,15 @@ export default function App() {
     setIsEditingItems(true);
   };
 
+  // True while the current split has nothing assigned yet (cleared items leave
+  // empty arrays behind, so check lengths, not keys). Used to emit the
+  // first-item-assigned funnel milestone exactly once per split.
+  const hasNoAssignments = Object.values(state.assignments).every(ids => ids.length === 0);
+
   const toggleAssignment = (itemId: string) => {
     if (!activePersonId) return;
+    const alreadyAssigned = (state.assignments[itemId] || []).includes(activePersonId);
+    if (hasNoAssignments && !alreadyAssigned) trackEvent('first-item-assigned');
 
     setState(prev => {
       const currentAssignments = prev.assignments[itemId] || [];
@@ -200,6 +209,9 @@ export default function App() {
   // Assign an item to everyone at once (or clear it if everyone already has it)
   // — a shortcut for shared items like a table appetizer.
   const toggleAllAssignment = (itemId: string) => {
+    // With nothing assigned yet, "everyone has it" can't be true, so this
+    // tap necessarily assigns.
+    if (hasNoAssignments && state.people.length > 0) trackEvent('first-item-assigned');
     setState(prev => {
       const allPersonIds = prev.people.map(p => p.id);
       const current = prev.assignments[itemId] || [];
@@ -222,6 +234,8 @@ export default function App() {
   // pruned so an item with no explicit weights falls back to a plain equal split.
   const setUnitWeight = (itemId: string, personId: string, weight: number) => {
     const w = Math.max(0, Math.round(weight || 0));
+    // A positive weight implies an assignment (see below).
+    if (hasNoAssignments && w > 0) trackEvent('first-item-assigned');
     setState(prev => {
       const currentAssigned = prev.assignments[itemId] || [];
       const itemWeights = { ...(prev.unitWeights[itemId] || {}) };
@@ -383,6 +397,7 @@ export default function App() {
   const handleAddPerson = () => {
     const newPerson = createPerson(state.people);
     const newPeople = [...state.people, newPerson];
+    trackEvent('person-added', { peopleCount: newPeople.length });
     setState(prev => ({ ...prev, people: newPeople }));
     savePeople(newPeople);
     setActivePersonId(newPerson.id);
@@ -461,12 +476,16 @@ export default function App() {
   };
 
   const setDiscount = (value: number) => {
+    // Track only the no-discount → discount transition, not every adjustment.
+    if (state.discount === 0 && value > 0) trackEvent('discount-set');
     setState(prev => ({ ...prev, discount: Math.min(100, Math.max(0, value)) }));
   };
 
   // Tip applies the value in whichever unit was entered. A percentage is capped
   // at 100% (matching discount); a flat amount is only floored at 0.
   const setTip = (value: number, mode: AppState['tipMode']) => {
+    // Track only the no-tip → tip transition, not every adjustment.
+    if (state.tip === 0 && value > 0) trackEvent('tip-set', { mode });
     setState(prev => ({
       ...prev,
       tipMode: mode,
@@ -537,10 +556,12 @@ export default function App() {
   // with a "⚠️ UNASSIGNED" line and the per-person amounts wouldn't add up to
   // the total. Ask first so the sender notices before it reaches the group.
   const performShare = async () => {
-    trackEvent('summary-shared', {
+    // Tracked only once the share/copy actually happens, so a dismissed share
+    // sheet or a failed clipboard write doesn't count as a share.
+    const shareProps = {
       peopleCount: state.people.filter(p => (personTotals[p.id] || 0) > 0.01).length,
       hasUnassigned: unassignedTotal > 0.05,
-    });
+    };
     const summary = generateSummaryText();
 
     if (navigator.share) {
@@ -554,10 +575,14 @@ export default function App() {
         } else {
           await navigator.share({ title: 'SplitSmart Receipt Summary', text: summary });
         }
+        trackEvent('summary-shared', { ...shareProps, method: 'native' });
       } catch (err: any) {
         // Dismissing the native share sheet rejects with AbortError — that's a
         // normal user action, not a failure, so don't surface it.
-        if (err?.name !== 'AbortError') {
+        if (err?.name === 'AbortError') {
+          trackEvent('summary-share-cancelled');
+        } else {
+          trackEvent('summary-share-failed', { method: 'native', reason: err?.message || 'unknown' });
           console.error('Error sharing:', err);
           notify("Sharing failed. Please try again.", 'error');
         }
@@ -565,8 +590,10 @@ export default function App() {
     } else {
       try {
         await navigator.clipboard.writeText(summary);
+        trackEvent('summary-shared', { ...shareProps, method: 'clipboard' });
         notify("Detailed summary copied!");
-      } catch (err) {
+      } catch (err: any) {
+        trackEvent('summary-share-failed', { method: 'clipboard', reason: err?.message || 'unknown' });
         console.error('Failed to copy:', err);
         notify("Could not copy to clipboard.", 'error');
       }

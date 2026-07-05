@@ -7,6 +7,25 @@ import * as amplitude from '@amplitude/analytics-browser';
 // SDK failed/was blocked), trackEvent/identifyUser no-op.
 let amplitudeReady = false;
 
+// Every event the app can emit. Keeping the taxonomy closed makes a typo'd
+// event name a compile error instead of a silently forked metric.
+export type AnalyticsEvent =
+  | 'signed-in'
+  | 'signed-out'
+  | 'receipt-upload-started'
+  | 'receipt-scan-succeeded'
+  | 'receipt-scan-failed'
+  | 'receipt-scan-cancelled'
+  | 'enter-items-manually'
+  | 'receipt-reset'
+  | 'first-item-assigned'
+  | 'person-added'
+  | 'tip-set'
+  | 'discount-set'
+  | 'summary-shared'
+  | 'summary-share-cancelled'
+  | 'summary-share-failed';
+
 /**
  * Initialize Amplitude once at app startup. Reads the client-side API key from
  * VITE_AMPLITUDE_API_KEY. If the key is absent (e.g. local dev without a key),
@@ -18,7 +37,7 @@ export const initAnalytics = (): void => {
   try {
     amplitude.init(apiKey, {
       // Auto-capture sessions and page views; explicit events come via trackEvent.
-      defaultTracking: { sessions: true, pageViews: true },
+      autocapture: { sessions: true, pageViews: true },
     });
     amplitudeReady = true;
   } catch {
@@ -37,7 +56,7 @@ export const identifyUser = (email: string): void => {
   }
 };
 
-export const trackEvent = (event: string, params?: Record<string, unknown>): void => {
+export const trackEvent = (event: AnalyticsEvent, params?: Record<string, unknown>): void => {
   if (!amplitudeReady) return;
   try {
     amplitude.track(event, params);
