@@ -2,6 +2,7 @@
 // Browser SDK. Every call is guarded so a blocked, absent, or unconfigured
 // backend can never throw — instrumentation must never break the app.
 import * as amplitude from '@amplitude/analytics-browser';
+import { sessionReplayPlugin } from '@amplitude/plugin-session-replay-browser';
 
 // Whether Amplitude was successfully initialized. When false (no API key, or the
 // SDK failed/was blocked), trackEvent/identifyUser no-op.
@@ -35,6 +36,10 @@ export const initAnalytics = (): void => {
   const apiKey = import.meta.env.VITE_AMPLITUDE_API_KEY as string | undefined;
   if (!apiKey) return;
   try {
+    // Session Replay: record 100% of sessions — the app is behind an email
+    // allowlist with a handful of users, so replay quota isn't a concern.
+    // Must be added before init(). Default masking (inputs) is kept.
+    amplitude.add(sessionReplayPlugin({ sampleRate: 1 }));
     amplitude.init(apiKey, {
       // Auto-capture sessions and page views; explicit events come via trackEvent.
       autocapture: { sessions: true, pageViews: true },
