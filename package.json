@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@amplitude/analytics-browser": "^2.44.4",
     "google-auth-library": "^10.9.0",
     "lucide-react": "^1.22.0",
     "openai": "^6.45.0",

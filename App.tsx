@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from './types';
 import { analyzeReceipt } from './services/receiptService';
 import { getUser, getUserFirstName, signOut } from './services/auth';
-import { trackEvent } from './services/analytics';
+import { trackEvent, identifyUser } from './services/analytics';
 import { useAuth } from './hooks/useAuth';
 import { useSessionPersistence } from './hooks/useSessionPersistence';
 import { useEditSnapshot } from './hooks/useEditSnapshot';
@@ -67,6 +67,17 @@ export default function App() {
     });
   }, [user]);
 
+  // Analytics: once a user is signed in, tie events to them and fire signed-in
+  // exactly once per account (a ref guards against re-fires on re-render/refresh
+  // within the same session).
+  const identifiedEmailRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user || identifiedEmailRef.current === user.email) return;
+    identifiedEmailRef.current = user.email;
+    identifyUser(user.email);
+    trackEvent('signed-in');
+  }, [user]);
+
   // Sync activePersonId if current people list changes
   useEffect(() => {
     if (!activePersonId && state.people.length > 0) {
@@ -97,6 +108,7 @@ export default function App() {
   const analyzeAbortRef = useRef<AbortController | null>(null);
 
   const handleImageSelected = async (base64: string) => {
+    trackEvent('receipt-upload-started');
     setState(prev => ({ ...prev, step: 'analyzing', receiptImage: base64, error: null }));
     const controller = new AbortController();
     analyzeAbortRef.current = controller;
@@ -105,6 +117,7 @@ export default function App() {
       const result = await analyzeReceipt(base64, controller.signal);
       // If the user cancelled while the response was landing, stay cancelled.
       if (controller.signal.aborted) return;
+      trackEvent('receipt-scan-succeeded', { itemCount: result.items.length });
       setState(prev => ({
         ...prev,
         step: 'splitting',
@@ -121,6 +134,7 @@ export default function App() {
     } catch (err: any) {
       // A user-initiated cancel already reset the state — don't surface it.
       if (err?.name === 'AbortError') return;
+      trackEvent('receipt-scan-failed', { reason: err?.message || 'unknown' });
       // Keep receiptImage so the error banner can offer "Try again" without
       // making the user re-shoot the photo for a transient failure.
       setState(prev => ({
@@ -135,6 +149,7 @@ export default function App() {
 
   // Abort the in-flight analysis and return to the upload step.
   const cancelAnalyze = () => {
+    trackEvent('receipt-scan-cancelled');
     analyzeAbortRef.current?.abort();
     analyzeAbortRef.current = null;
     setState(prev => ({ ...prev, step: 'upload', receiptImage: null, error: null }));
@@ -342,6 +357,7 @@ export default function App() {
   const handleReset = () => setShowResetConfirm(true);
 
   const performReset = () => {
+    trackEvent('receipt-reset');
     setState(prev => ({
       ...prev,
       step: 'upload',
@@ -521,6 +537,10 @@ export default function App() {
   // with a "⚠️ UNASSIGNED" line and the per-person amounts wouldn't add up to
   // the total. Ask first so the sender notices before it reaches the group.
   const performShare = async () => {
+    trackEvent('summary-shared', {
+      peopleCount: state.people.filter(p => (personTotals[p.id] || 0) > 0.01).length,
+      hasUnassigned: unassignedTotal > 0.05,
+    });
     const summary = generateSummaryText();
 
     if (navigator.share) {
@@ -710,7 +730,7 @@ export default function App() {
                   </div>
                   <button
                     role="menuitem"
-                    onClick={() => { setAccountMenuOpen(false); signOut(); }}
+                    onClick={() => { trackEvent('signed-out'); setAccountMenuOpen(false); signOut(); }}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors"
                   >
                     <LogOut className="w-4 h-4" />

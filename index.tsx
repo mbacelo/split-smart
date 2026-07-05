@@ -2,6 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { initAnalytics } from './services/analytics';
+
+// Initialize analytics before the app renders so early events are captured.
+initAnalytics();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
