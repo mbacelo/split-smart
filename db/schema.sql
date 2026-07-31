@@ -14,7 +14,9 @@
 CREATE TABLE IF NOT EXISTS access_requests (
   email        text PRIMARY KEY,
   name         text,
-  status       text NOT NULL DEFAULT 'waitlisted',  -- 'waitlisted' | 'allowed'
+  -- 'waitlisted' (pending) | 'allowed' | 'rejected' (declined; kept so the
+  -- person stays out of the pending queue and the decision is reversible)
+  status       text NOT NULL DEFAULT 'waitlisted',
   requested_at timestamptz NOT NULL DEFAULT now(),
   approved_at  timestamptz
 );

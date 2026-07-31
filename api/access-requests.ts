@@ -23,7 +23,7 @@ import {
 
 const rateLimited = makeRateLimiter(30, 60_000);
 
-const STATUSES: AccessStatus[] = ["waitlisted", "allowed"];
+const STATUSES: AccessStatus[] = ["waitlisted", "allowed", "rejected"];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320; // RFC 5321 practical maximum
 
@@ -79,10 +79,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!STATUSES.includes(status)) {
         return res.status(400).json({ error: "Unknown status." });
       }
-      // Admin access comes from ADMIN_EMAILS, so self-revoking wouldn't
-      // actually lock them out — it would just look like the click did nothing.
-      if (email === admin.email && status === "waitlisted") {
-        return res.status(400).json({ error: "You can't revoke your own access." });
+      // Admin access comes from ADMIN_EMAILS, so downgrading yourself wouldn't
+      // actually lock you out — it would just look like the click did nothing.
+      if (email === admin.email && status !== "allowed") {
+        return res.status(400).json({ error: "You can't remove your own access." });
       }
 
       const request = await setAccessStatus(email, status);

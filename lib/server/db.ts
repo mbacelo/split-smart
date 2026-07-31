@@ -36,7 +36,11 @@ export async function isEmailAllowed(email: string): Promise<boolean> {
   }
 }
 
-export type AccessStatus = "waitlisted" | "allowed";
+// 'rejected' is a decision, not just an absence of one: it keeps the person out
+// of the pending queue (and out of it when they re-join, since the waitlist
+// upsert never overwrites an existing row) while preserving the record so the
+// admin can see who they declined and undo it.
+export type AccessStatus = "waitlisted" | "allowed" | "rejected";
 
 export interface AccessRequest {
   email: string;
@@ -68,10 +72,15 @@ type Row = {
   approved_at: string | Date | null;
 };
 
+// Unknown values fall back to 'waitlisted' — the safe default, since it grants
+// nothing and leaves the row visible in the admin's queue rather than hiding it.
+const toStatus = (value: string): AccessStatus =>
+  value === "allowed" || value === "rejected" ? value : "waitlisted";
+
 const toAccessRequest = (row: Row): AccessRequest => ({
   email: row.email,
   name: row.name,
-  status: row.status === "allowed" ? "allowed" : "waitlisted",
+  status: toStatus(row.status),
   requestedAt: new Date(row.requested_at).toISOString(),
   approvedAt: row.approved_at ? new Date(row.approved_at).toISOString() : null,
 });
@@ -99,20 +108,24 @@ export async function upsertWaitlistRequest(email: string, name: string | null):
 // These throw on DB errors; the endpoint maps that to a friendly 502. Callers
 // must be admin-authenticated — there's no authorization check down here.
 
-/** Every access request, pending ones first so the admin's work is at the top. */
+/** Every access request: pending first (the admin's actual work), then allowed,
+ * then rejected — decided-and-declined is the least interesting. */
 export async function listAccessRequests(): Promise<AccessRequest[]> {
   const db = sql();
   await ensureTable(db);
   const rows = (await db`
     SELECT email, name, status, requested_at, approved_at
     FROM access_requests
-    ORDER BY (status = 'allowed'), requested_at DESC
+    ORDER BY
+      CASE status WHEN 'waitlisted' THEN 0 WHEN 'allowed' THEN 1 ELSE 2 END,
+      requested_at DESC
   `) as Row[];
   return rows.map(toAccessRequest);
 }
 
-/** Approve or revoke an existing request. Returns null when there's no such
- * row, so the endpoint can answer 404 instead of silently doing nothing. */
+/** Move an existing request to any status — approve, revoke, or reject.
+ * approved_at is cleared for anything but 'allowed'. Returns null when there's
+ * no such row, so the endpoint can answer 404 instead of doing nothing. */
 export async function setAccessStatus(email: string, status: AccessStatus): Promise<AccessRequest | null> {
   const db = sql();
   await ensureTable(db);

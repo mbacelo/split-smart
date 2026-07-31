@@ -4,7 +4,7 @@ import { ApiError } from "./receiptService";
 // Client for the admin-only /api/access-requests endpoint. Every call is
 // authorized server-side against ADMIN_EMAILS; a non-admin just gets a 403.
 
-export type AccessStatus = "waitlisted" | "allowed";
+export type AccessStatus = "waitlisted" | "allowed" | "rejected";
 
 export interface AccessRequest {
   email: string;

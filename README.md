@@ -68,10 +68,15 @@ One-time setup:
 Day to day, approvals happen **in the app**. Sign in as an admin (an address in
 `ADMIN_EMAILS`) and pick **Manage access** from the account menu to:
 
-- see every request, pending ones first;
-- **Approve** a waitlisted person, or **Revoke** someone's access;
+- see every request — pending first, then allowed, then rejected;
+- **Approve** or **Reject** a pending request, or **Revoke** someone's access;
 - **Grant** access to any email directly, whether or not they ever joined the
   waitlist.
+
+Rejecting keeps the row but takes the person off the pending list, and re-joining
+the waitlist won't put them back on it. Nothing is permanent: **Approve** on a
+rejected row undoes the decision. Rejected users see the same invite-only prompt
+as anyone without access — they aren't told they were specifically declined.
 
 Changes take effect on the person's next scan — no redeploy. The menu item is
 only visible to admins, and the endpoint behind it re-checks `ADMIN_EMAILS` on

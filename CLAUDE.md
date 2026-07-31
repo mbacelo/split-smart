@@ -45,7 +45,9 @@ When adding server logic, keep secrets out of any code path that reaches the bun
 Two tiers, both checked server-side:
 
 - **Scan access** — `ALLOWED_EMAILS` (bootstrap/owner override, and the fallback when the DB is down) **or** `access_requests.status = 'allowed'` in Neon. The DB is the live source of truth: approvals take effect on the next scan, no redeploy.
-- **Admin** — `ADMIN_EMAILS` only, defaulting to the owner account. Admins get the **Manage access** item in the account dropdown, opening [components/AccessManager.tsx](components/AccessManager.tsx) to approve/revoke requests and grant access by email.
+- **Admin** — `ADMIN_EMAILS` only, defaulting to the owner account. Admins get the **Manage access** item in the account dropdown, opening [components/AccessManager.tsx](components/AccessManager.tsx) to approve/reject/revoke requests and grant access by email.
+
+`status` is `'waitlisted' | 'allowed' | 'rejected'`. Only `'allowed'` grants anything — `'rejected'` exists so a declined person leaves the pending queue and stays out of it, while keeping the decision visible and reversible. `upsertWaitlistRequest` uses `ON CONFLICT DO NOTHING`, which is what makes that hold: re-joining never overwrites an existing row, so a rejected user can't reset themselves to pending. Don't change that to `DO UPDATE` without accounting for it.
 
 Admin is deliberately **env-only and never in the database**. The admin UI writes to `access_requests`; keeping the role out of that table means it can't grant admin to anyone, including itself. Don't add a `role` column to satisfy a future feature without revisiting that trade-off.
 

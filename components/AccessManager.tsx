@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, Check, RefreshCw, ShieldCheck, UserPlus, X } from 'lucide-react';
+import { AlertCircle, Ban, Check, RefreshCw, ShieldCheck, UserPlus, X } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { ConfirmDialog } from './ConfirmDialog';
 import { AccessRequest, grantAccess, setAccessStatus } from '../services/adminAccess';
@@ -17,6 +17,23 @@ interface AccessManagerProps {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Class strings are written out in full (never interpolated) so Tailwind's
+// scanner sees them — same reason as components/personColors.ts.
+const STATUS_STYLES: Record<AccessRequest['status'], { pill: string; label: string }> = {
+  waitlisted: { pill: 'bg-amber-100 text-amber-700', label: 'Waitlisted' },
+  allowed: { pill: 'bg-green-100 text-green-700', label: 'Allowed' },
+  rejected: { pill: 'bg-slate-200 text-slate-600', label: 'Rejected' },
+};
+
+const BUTTON_BASE =
+  'inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors shrink-0 disabled:opacity-60 disabled:pointer-events-none';
+
+const ACTION_BUTTON = {
+  approve: `${BUTTON_BASE} text-indigo-600 hover:bg-indigo-50`,
+  reject: `${BUTTON_BASE} text-slate-500 hover:bg-slate-100`,
+  revoke: `${BUTTON_BASE} text-red-600 hover:bg-red-50`,
+};
 
 // Admin-only: approve or revoke AI-scan access, or grant it to an email
 // directly. Replaces hand-editing the access_requests table in SQL. Only
@@ -37,23 +54,26 @@ export const AccessManager: React.FC<AccessManagerProps> = ({
   // The email of the row with an action in flight — only that row spins.
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  // Revoking is the destructive direction, so it goes through a confirmation.
-  const [revokeTarget, setRevokeTarget] = useState<AccessRequest | null>(null);
+  // Taking access away — revoking or rejecting — goes through a confirmation.
+  // Approving never does; it's the easily-undone direction.
+  const [confirmTarget, setConfirmTarget] = useState<
+    { request: AccessRequest; action: 'revoke' | 'reject' } | null
+  >(null);
 
   // Fresh state on every open — a previous visit's error shouldn't leak.
   useEffect(() => {
-    if (isOpen) { setNewEmail(''); setActionError(null); setRevokeTarget(null); }
+    if (isOpen) { setNewEmail(''); setActionError(null); setConfirmTarget(null); }
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      // Let the revoke confirmation handle its own Escape first.
-      if (e.key === 'Escape' && !revokeTarget) { e.preventDefault(); onClose(); }
+      // Let the confirmation handle its own Escape first.
+      if (e.key === 'Escape' && !confirmTarget) { e.preventDefault(); onClose(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose, revokeTarget]);
+  }, [isOpen, onClose, confirmTarget]);
 
   if (!isOpen) return null;
 
@@ -82,8 +102,14 @@ export const AccessManager: React.FC<AccessManagerProps> = ({
     setPendingEmail(request.email);
     setActionError(null);
     try {
-      onApplyLocal(await setAccessStatus(request.email, status));
-      trackEvent(status === 'allowed' ? 'access-granted' : 'access-revoked', { source: 'list' });
+      const updated = await setAccessStatus(request.email, status);
+      onApplyLocal(updated);
+      trackEvent(
+        status === 'allowed' ? 'access-granted' : status === 'rejected' ? 'access-rejected' : 'access-revoked',
+        // Approving a rejected person is an undo, worth telling apart from a
+        // first-time approval when reading the funnel.
+        { source: 'list', from: request.status },
+      );
     } catch (err: any) {
       trackEvent('access-grant-failed', { reason: err?.message || 'unknown' });
       setActionError(err?.message || 'Something went wrong. Please try again.');
@@ -173,12 +199,12 @@ export const AccessManager: React.FC<AccessManagerProps> = ({
             ) : (
               <ul className="space-y-2">
                 {requests.map((request) => {
-                  const allowed = request.status === 'allowed';
                   const busy = pendingEmail === request.email;
+                  const { pill, label } = STATUS_STYLES[request.status];
                   return (
                     // Stacked on mobile: an email is long and identifies the
                     // person, so it wraps in full rather than fighting the pill
-                    // and button for width on one line.
+                    // and buttons for width on one line.
                     <li
                       key={request.email}
                       className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 rounded-xl border border-slate-200 bg-white"
@@ -191,28 +217,45 @@ export const AccessManager: React.FC<AccessManagerProps> = ({
                           <p className="text-xs text-slate-500 break-all">{request.email}</p>
                         )}
                       </div>
-                      <div className="flex items-center justify-between gap-3 sm:justify-start">
-                        <span
-                          className={`text-xs font-semibold px-2 py-1 rounded-full shrink-0 ${
-                            allowed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          {allowed ? 'Allowed' : 'Waitlisted'}
+                      <div className="flex items-center justify-between gap-2 sm:justify-start sm:gap-3">
+                        <span className={`text-xs font-semibold px-2 py-1 rounded-full shrink-0 ${pill}`}>
+                          {label}
                         </span>
-                        <button
-                          onClick={() =>
-                            allowed ? setRevokeTarget(request) : void applyStatus(request, 'allowed')
-                          }
-                          disabled={busy}
-                          className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors shrink-0 disabled:opacity-60 disabled:pointer-events-none ${
-                            allowed
-                              ? 'text-red-600 hover:bg-red-50'
-                              : 'text-indigo-600 hover:bg-indigo-50'
-                          }`}
-                        >
-                          {busy ? spinner : allowed ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                          <span>{allowed ? 'Revoke' : 'Approve'}</span>
-                        </button>
+                        <div className="flex items-center gap-1">
+                          {/* Approve: for a pending request, or to undo a rejection. */}
+                          {request.status !== 'allowed' && (
+                            <button
+                              onClick={() => void applyStatus(request, 'allowed')}
+                              disabled={busy}
+                              className={ACTION_BUTTON.approve}
+                            >
+                              {busy ? spinner : <Check className="w-3.5 h-3.5" />}
+                              <span>Approve</span>
+                            </button>
+                          )}
+                          {/* Reject a pending request: takes them out of the
+                              queue for good, undoable via Approve. */}
+                          {request.status === 'waitlisted' && (
+                            <button
+                              onClick={() => setConfirmTarget({ request, action: 'reject' })}
+                              disabled={busy}
+                              className={ACTION_BUTTON.reject}
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Reject</span>
+                            </button>
+                          )}
+                          {request.status === 'allowed' && (
+                            <button
+                              onClick={() => setConfirmTarget({ request, action: 'revoke' })}
+                              disabled={busy}
+                              className={ACTION_BUTTON.revoke}
+                            >
+                              {busy ? spinner : <X className="w-3.5 h-3.5" />}
+                              <span>Revoke</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </li>
                   );
@@ -224,18 +267,26 @@ export const AccessManager: React.FC<AccessManagerProps> = ({
       </div>
 
       <ConfirmDialog
-        isOpen={revokeTarget !== null}
-        title="Revoke access?"
-        message={`${revokeTarget?.name || revokeTarget?.email} will no longer be able to scan receipts with AI. They'll stay on the waitlist, so you can approve them again later.`}
-        confirmLabel="Revoke"
+        isOpen={confirmTarget !== null}
+        title={confirmTarget?.action === 'reject' ? 'Reject request?' : 'Revoke access?'}
+        message={
+          confirmTarget
+            ? `${confirmTarget.request.name || confirmTarget.request.email} ${
+                confirmTarget.action === 'reject'
+                  ? "won't get access to AI scanning. They'll drop off the pending list — you can still approve them later if you change your mind."
+                  : "will no longer be able to scan receipts with AI. They'll go back to the waitlist, so you can approve them again later."
+              }`
+            : ''
+        }
+        confirmLabel={confirmTarget?.action === 'reject' ? 'Reject' : 'Revoke'}
         variant="danger"
-        icon={<X className="w-5 h-5" />}
+        icon={confirmTarget?.action === 'reject' ? <Ban className="w-5 h-5" /> : <X className="w-5 h-5" />}
         onConfirm={() => {
-          const target = revokeTarget;
-          setRevokeTarget(null);
-          if (target) void applyStatus(target, 'waitlisted');
+          const target = confirmTarget;
+          setConfirmTarget(null);
+          if (target) void applyStatus(target.request, target.action === 'reject' ? 'rejected' : 'waitlisted');
         }}
-        onCancel={() => setRevokeTarget(null)}
+        onCancel={() => setConfirmTarget(null)}
       />
     </>
   );

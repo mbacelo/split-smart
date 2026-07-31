@@ -32,6 +32,7 @@ export type AnalyticsEvent =
   | 'waitlist-join-failed'
   | 'access-granted'
   | 'access-revoked'
+  | 'access-rejected'
   | 'access-grant-failed';
 
 /**
