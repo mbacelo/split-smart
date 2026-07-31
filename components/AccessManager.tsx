@@ -176,39 +176,44 @@ export const AccessManager: React.FC<AccessManagerProps> = ({
                   const allowed = request.status === 'allowed';
                   const busy = pendingEmail === request.email;
                   return (
+                    // Stacked on mobile: an email is long and identifies the
+                    // person, so it wraps in full rather than fighting the pill
+                    // and button for width on one line.
                     <li
                       key={request.email}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white"
+                      className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 rounded-xl border border-slate-200 bg-white"
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-slate-800 truncate">
+                      <div className="min-w-0 sm:flex-1">
+                        <p className="text-sm font-semibold text-slate-800 break-words">
                           {request.name || request.email}
                         </p>
                         {request.name && (
-                          <p className="text-xs text-slate-500 truncate">{request.email}</p>
+                          <p className="text-xs text-slate-500 break-all">{request.email}</p>
                         )}
                       </div>
-                      <span
-                        className={`text-xs font-semibold px-2 py-1 rounded-full shrink-0 ${
-                          allowed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                        }`}
-                      >
-                        {allowed ? 'Allowed' : 'Waitlisted'}
-                      </span>
-                      <button
-                        onClick={() =>
-                          allowed ? setRevokeTarget(request) : void applyStatus(request, 'allowed')
-                        }
-                        disabled={busy}
-                        className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors shrink-0 disabled:opacity-60 disabled:pointer-events-none ${
-                          allowed
-                            ? 'text-red-600 hover:bg-red-50'
-                            : 'text-indigo-600 hover:bg-indigo-50'
-                        }`}
-                      >
-                        {busy ? spinner : allowed ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                        <span>{allowed ? 'Revoke' : 'Approve'}</span>
-                      </button>
+                      <div className="flex items-center justify-between gap-3 sm:justify-start">
+                        <span
+                          className={`text-xs font-semibold px-2 py-1 rounded-full shrink-0 ${
+                            allowed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {allowed ? 'Allowed' : 'Waitlisted'}
+                        </span>
+                        <button
+                          onClick={() =>
+                            allowed ? setRevokeTarget(request) : void applyStatus(request, 'allowed')
+                          }
+                          disabled={busy}
+                          className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors shrink-0 disabled:opacity-60 disabled:pointer-events-none ${
+                            allowed
+                              ? 'text-red-600 hover:bg-red-50'
+                              : 'text-indigo-600 hover:bg-indigo-50'
+                          }`}
+                        >
+                          {busy ? spinner : allowed ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                          <span>{allowed ? 'Revoke' : 'Approve'}</span>
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
