@@ -28,6 +28,9 @@ Browser (React PWA)
 
   → POST /api/join-waitlist   Authorization: Bearer <id_token>
        ↓  records the verified email in Neon (access_requests, status 'waitlisted')
+
+  → GET|POST /api/access-requests   Authorization: Bearer <id_token>
+       ↓  admins only (ADMIN_EMAILS): list requests, approve/revoke, grant by email
 ```
 
 > For the internals — the splitting math, state/persistence, the provider
@@ -47,8 +50,10 @@ On Vercel, set the same variables in **Project Settings → Environment Variable
 | `OPENAI_REASONING_EFFORT` | server | Optional. GPT-5.x reasoning effort: `none`\|`minimal`\|`low`\|`medium`\|`high`\|`xhigh`. Omit for model default. |
 | `GOOGLE_CLIENT_ID` | server | Verifies the ID token audience. |
 | `ALLOWED_EMAILS` | server | Comma-separated bootstrap allowlist (owner override + fallback when the DB is unreachable). |
+| `ADMIN_EMAILS` | server | Comma-separated admins, who get the in-app **Manage access** screen. Defaults to the owner account. Never stored in the DB. |
 | `DATABASE_URL` | server | Neon Postgres connection string. Backs the waitlist and the DB-managed allowlist. Optional locally. |
 | `VITE_GOOGLE_CLIENT_ID` | client | Same client ID, exposed to the browser for the Sign-In button (client IDs are public). |
+| `VITE_AMPLITUDE_API_KEY` | client | Amplitude key for analytics. Optional — leave blank to disable. |
 
 ## Waitlist & allowlist (Neon Postgres)
 
@@ -60,15 +65,32 @@ One-time setup:
 2. Run [`db/schema.sql`](db/schema.sql) once in the Neon SQL editor. (The
    waitlist endpoint also creates the table lazily as a safety net.)
 
-Day to day:
+Day to day, approvals happen **in the app**. Sign in as an admin (an address in
+`ADMIN_EMAILS`) and pick **Manage access** from the account menu to:
+
+- see every request, pending ones first;
+- **Approve** a waitlisted person, or **Revoke** someone's access;
+- **Grant** access to any email directly, whether or not they ever joined the
+  waitlist.
+
+Changes take effect on the person's next scan — no redeploy. The menu item is
+only visible to admins, and the endpoint behind it re-checks `ADMIN_EMAILS` on
+every request, so hiding it is a convenience, not the security boundary.
+
+Admin is intentionally env-only and never stored in the database: the admin UI
+writes to `access_requests`, so keeping the role out of that table means the UI
+can't grant admin to anyone, including itself.
+
+The equivalent SQL still works for break-glass use:
 
 - **Review requests:**
   `SELECT * FROM access_requests WHERE status = 'waitlisted' ORDER BY requested_at;`
-- **Approve someone** (takes effect immediately, no redeploy):
+- **Approve someone:**
   `UPDATE access_requests SET status = 'allowed', approved_at = now() WHERE email = 'person@example.com';`
-- `ALLOWED_EMAILS` still works as before (append + redeploy) and doubles as the
-  fallback if the database is ever unreachable — scanning never hard-breaks on
-  a DB outage.
+
+`ALLOWED_EMAILS` also still works as before (append + redeploy) and doubles as
+the fallback if the database is ever unreachable — scanning never hard-breaks on
+a DB outage.
 
 Neon's free tier auto-suspends when idle and **auto-wakes on the next query**
 (~0.5–2 s cold start), so the app never needs a manual restore.

@@ -34,7 +34,22 @@ Browser → POST /api/analyze-receipt { imageBase64 }  Authorization: Bearer <go
         → lib/ai provider (OpenAI)  ← key stays server-side
 ```
 
-[api/analyze-receipt.ts](api/analyze-receipt.ts) is the only server entry point. It: verifies the Google ID token (`google-auth-library`), enforces `ALLOWED_EMAILS`, applies a naive in-memory per-email rate limit (resets on cold start), validates MIME type + decoded image size, then calls the provider and never leaks provider errors to the client. When adding server logic, keep secrets out of any code path that reaches the bundle, and keep `vite.config.ts`'s `SERVER_ENV_KEYS` in sync with the env the handler reads.
+[api/analyze-receipt.ts](api/analyze-receipt.ts) is the entry point for scanning. It: verifies the Google ID token (`google-auth-library`), checks the allowlist (`ALLOWED_EMAILS` env var **or** the `access_requests` table), applies a naive in-memory per-email rate limit (resets on cold start), validates MIME type + decoded image size, then calls the provider and never leaks provider errors to the client.
+
+There are three handlers under `api/`, all following the same skeleton — method → auth → rate limit → config check → validate → work, with every catch logging server-side and returning a generic message: `analyze-receipt`, `join-waitlist`, and `access-requests` (admin). Shared server helpers live in [lib/server/](lib/server): `googleAuth.ts` (`verifyUser`, `makeRateLimiter`), `adminAuth.ts` (`isAdminEmail`, `verifyAdmin`), `db.ts` (Neon).
+
+When adding server logic, keep secrets out of any code path that reaches the bundle, and keep **both** hardcoded lists in `vite.config.ts` in sync: `SERVER_ENV_KEYS` (env the handlers read) and `API_ENDPOINTS` (or the route 404s under `npm run dev` while working fine on Vercel).
+
+### Access control and the admin role
+
+Two tiers, both checked server-side:
+
+- **Scan access** — `ALLOWED_EMAILS` (bootstrap/owner override, and the fallback when the DB is down) **or** `access_requests.status = 'allowed'` in Neon. The DB is the live source of truth: approvals take effect on the next scan, no redeploy.
+- **Admin** — `ADMIN_EMAILS` only, defaulting to the owner account. Admins get the **Manage access** item in the account dropdown, opening [components/AccessManager.tsx](components/AccessManager.tsx) to approve/revoke requests and grant access by email.
+
+Admin is deliberately **env-only and never in the database**. The admin UI writes to `access_requests`; keeping the role out of that table means it can't grant admin to anyone, including itself. Don't add a `role` column to satisfy a future feature without revisiting that trade-off.
+
+The client can't read `ADMIN_EMAILS`, so [hooks/useAdmin.ts](hooks/useAdmin.ts) probes `GET /api/access-requests` once per sign-in: 200 means admin (and the list is already loaded), anything else silently means not. **A probe failure must never surface as an error** — 403 is the normal path for every regular user. Hiding the menu item is a convenience; `api/access-requests.ts` re-checks admin on every action, which is the actual boundary.
 
 ### AI provider abstraction
 

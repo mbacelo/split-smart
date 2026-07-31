@@ -14,13 +14,18 @@ const SERVER_ENV_KEYS = [
   'OPENAI_REASONING_EFFORT',
   'GOOGLE_CLIENT_ID',
   'ALLOWED_EMAILS',
+  'ADMIN_EMAILS',
   'DATABASE_URL',
 ] as const;
 
 // The /api endpoints served locally by the dev plugin. Add new api/*.ts
 // handlers here so `npm run dev` picks them up (production is untouched —
 // Vercel discovers them by filename).
-const API_ENDPOINTS = ['analyze-receipt', 'join-waitlist'] as const;
+const API_ENDPOINTS = ['analyze-receipt', 'join-waitlist', 'access-requests'] as const;
+
+// Methods the dev plugin forwards. The handlers do their own per-endpoint
+// method check; this is just the outer gate (Vercel has no equivalent).
+const API_METHODS = ['GET', 'POST'] as const;
 
 /**
  * Dev-only plugin: serves /api/* locally by running the SAME handlers that
@@ -47,7 +52,7 @@ function devApiPlugin(env: Record<string, string>): Plugin {
           res.end(JSON.stringify({ error: 'Not found.' }));
           return;
         }
-        if (req.method !== 'POST') {
+        if (!(API_METHODS as readonly string[]).includes(req.method || '')) {
           res.statusCode = 405;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ error: 'Method not allowed.' }));
@@ -55,11 +60,15 @@ function devApiPlugin(env: Record<string, string>): Plugin {
         }
 
         try {
-          // Buffer + parse the JSON body (the handler expects req.body).
-          const chunks: Buffer[] = [];
-          for await (const chunk of req) chunks.push(chunk as Buffer);
-          const rawBody = Buffer.concat(chunks).toString('utf8');
-          const body = rawBody ? JSON.parse(rawBody) : {};
+          // Buffer + parse the JSON body (the handler expects req.body). A GET
+          // has none, so skip straight past it.
+          let body: unknown = {};
+          if (req.method !== 'GET') {
+            const chunks: Buffer[] = [];
+            for await (const chunk of req) chunks.push(chunk as Buffer);
+            const rawBody = Buffer.concat(chunks).toString('utf8');
+            body = rawBody ? JSON.parse(rawBody) : {};
+          }
 
           // Adapt Node req/res to the minimal VercelRequest/VercelResponse shape
           // the handler uses (method, headers, body / status().json()).

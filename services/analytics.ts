@@ -29,7 +29,10 @@ export type AnalyticsEvent =
   | 'scan-sign-in-prompted'
   | 'waitlist-prompted'
   | 'waitlist-joined'
-  | 'waitlist-join-failed';
+  | 'waitlist-join-failed'
+  | 'access-granted'
+  | 'access-revoked'
+  | 'access-grant-failed';
 
 /**
  * Initialize Amplitude once at app startup. Reads the client-side API key from

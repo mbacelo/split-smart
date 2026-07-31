@@ -5,14 +5,16 @@ import { analyzeReceipt, ApiError } from './services/receiptService';
 import { getUser, getUserFirstName, getSignInMethod, signOut } from './services/auth';
 import { trackEvent, identifyUser } from './services/analytics';
 import { useAuth } from './hooks/useAuth';
+import { useAdmin } from './hooks/useAdmin';
 import { useSessionPersistence } from './hooks/useSessionPersistence';
 import { useEditSnapshot } from './hooks/useEditSnapshot';
-import { Receipt, Check, RotateCcw, AlertCircle, LogOut, LogIn } from 'lucide-react';
+import { Receipt, Check, RotateCcw, AlertCircle, LogOut, LogIn, ShieldCheck } from 'lucide-react';
 import { formatCurrency } from './utils/currency';
 import { makeId } from './utils/id';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { SignInGate } from './components/SignInGate';
 import { WaitlistPrompt } from './components/WaitlistPrompt';
+import { AccessManager } from './components/AccessManager';
 import { UploadStep } from './components/UploadStep';
 import { AnalyzingStep } from './components/AnalyzingStep';
 import { SplittingStep } from './components/SplittingStep';
@@ -64,6 +66,12 @@ export default function App() {
     setAccountMenuOpen,
     accountMenuRef,
   } = useAuth(signInGateOpen);
+
+  // Admins (ADMIN_EMAILS, server-side) get a Manage access entry in the account
+  // menu for approving waitlist requests. Regular users see nothing new — the
+  // probe fails silently for them.
+  const admin = useAdmin(user);
+  const [accessManagerOpen, setAccessManagerOpen] = useState(false);
 
   // First-time visitors sign in after mount, when the people list is still the
   // untouched default. Seed Person #1 with their first name (and Google photo,
@@ -676,6 +684,17 @@ export default function App() {
 
       <WaitlistPrompt isOpen={waitlistOpen} onClose={() => setWaitlistOpen(false)} />
 
+      {/* Admin-only; the menu item that opens it is hidden for everyone else. */}
+      <AccessManager
+        isOpen={accessManagerOpen && admin.isAdmin}
+        onClose={() => setAccessManagerOpen(false)}
+        requests={admin.requests}
+        loading={admin.loading}
+        error={admin.error}
+        onRefresh={() => void admin.refresh()}
+        onApplyLocal={admin.applyLocal}
+      />
+
       <ConfirmDialog
         isOpen={showResetConfirm}
         title="Start over?"
@@ -772,6 +791,16 @@ export default function App() {
                     <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
                     <p className="text-xs text-slate-500 truncate">{user.email}</p>
                   </div>
+                  {admin.isAdmin && (
+                    <button
+                      role="menuitem"
+                      onClick={() => { setAccountMenuOpen(false); setAccessManagerOpen(true); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      Manage access
+                    </button>
+                  )}
                   <button
                     role="menuitem"
                     onClick={() => { trackEvent('signed-out'); setAccountMenuOpen(false); signOut(); }}
