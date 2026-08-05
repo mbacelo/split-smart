@@ -48,30 +48,31 @@ export const openAIProvider: AIProvider = {
       | OpenAI.ReasoningEffort
       | undefined;
 
-    const response = await client.chat.completions.create({
+    const response = await client.responses.create({
       model,
-      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
       // Cost ceiling per request. Receipt JSON is small (~500 tokens even for a
       // long receipt); the headroom is for reasoning tokens, which count here.
-      max_completion_tokens: 2000,
-      messages: [
+      max_output_tokens: 2000,
+      input: [
         {
           role: "user",
           content: [
-            { type: "text", text: RECEIPT_PROMPT },
+            { type: "input_text", text: RECEIPT_PROMPT },
             {
-              type: "image_url",
+              type: "input_image",
               // "auto" detail: receipts need legible text, so we let the API pick
               // the tiling. Image tokens dominate cost — if bills ever get cheap
               // extraction wrong, try "high"; if cost matters more, try "low".
-              image_url: { url: `data:${mimeType};base64,${cleanBase64}`, detail: "auto" },
+              detail: "auto",
+              image_url: `data:${mimeType};base64,${cleanBase64}`,
             },
           ],
         },
       ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
+      text: {
+        format: {
+          type: "json_schema",
           name: "receipt_analysis",
           strict: true,
           schema: RECEIPT_SCHEMA,
@@ -79,7 +80,7 @@ export const openAIProvider: AIProvider = {
       },
     });
 
-    const text = response.choices[0]?.message?.content;
+    const text = response.output_text;
     if (!text) throw new Error("No response from AI.");
 
     // Strict json_schema makes malformed output unlikely, not impossible
@@ -89,7 +90,9 @@ export const openAIProvider: AIProvider = {
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw new Error(`AI returned non-JSON output (finish_reason: ${response.choices[0]?.finish_reason}).`);
+      throw new Error(
+        `AI returned non-JSON output (status: ${response.status}, incomplete: ${response.incomplete_details?.reason ?? "n/a"}).`,
+      );
     }
     const analysis = parsed as ReceiptAnalysis;
     if (!analysis || !Array.isArray(analysis.items) || typeof analysis.total !== "number") {
