@@ -33,7 +33,8 @@ export type AnalyticsEvent =
   | 'access-granted'
   | 'access-revoked'
   | 'access-rejected'
-  | 'access-grant-failed';
+  | 'access-grant-failed'
+  | 'app-crashed';
 
 /**
  * Initialize Amplitude once at app startup. Reads the client-side API key from

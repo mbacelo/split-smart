@@ -15,12 +15,18 @@ const googleClient = new OAuth2Client();
  * verified email (+ display name when present), or null. */
 export async function verifyUser(authHeader: string | undefined): Promise<VerifiedUser | null> {
   if (!authHeader?.startsWith("Bearer ")) return null;
+  // Fail closed on a missing client id. google-auth-library skips the `aud`
+  // check entirely when `audience` is undefined, so an unset GOOGLE_CLIENT_ID
+  // would still verify the signature and issuer while accepting tokens minted
+  // for *any* Google OAuth client. A config gap must never widen who can sign in.
+  const audience = process.env.GOOGLE_CLIENT_ID;
+  if (!audience) {
+    console.error("GOOGLE_CLIENT_ID is not set; refusing to verify tokens.");
+    return null;
+  }
   const idToken = authHeader.slice("Bearer ".length).trim();
   try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    const ticket = await googleClient.verifyIdToken({ idToken, audience });
     const payload = ticket.getPayload();
     if (!payload?.email || !payload.email_verified) return null;
     return { email: payload.email.toLowerCase(), name: payload.name ?? null };

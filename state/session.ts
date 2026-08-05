@@ -131,6 +131,16 @@ export const saveSession = (state: AppState): void => {
   } catch { /* non-fatal */ }
 };
 
+/** Discard the in-progress session (and its image), keeping the people list.
+ * The recovery path in ErrorBoundary uses this when a restored session is what
+ * crashes the app — without it, reloading would rehydrate the same bad state. */
+export const clearSession = (): void => {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(IMAGE_KEY);
+  } catch { /* non-fatal */ }
+};
+
 // Downscaled JPEG data URL so a mid-split refresh can still show the receipt
 // for cross-checking. Best-effort: dropped silently if storage is full, since
 // the split work itself is persisted separately by saveSession.
