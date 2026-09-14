@@ -1,4 +1,3 @@
-import path from 'path';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -118,7 +117,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss(), devApiPlugin(env)],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': import.meta.dirname,
       },
     },
   };
