@@ -22,6 +22,16 @@ export interface SplitStats {
   unassignedItemCount: number;
   itemsTotalSum: number;
   adjustmentFactor: number;
+  // How the base total differs from the items' sum, for the breakdown card.
+  // Scanned: chargesTotal is the sum of the receipt's charges, and
+  // unexplainedDifference is whatever gap they don't cover (negative when the
+  // items add up to more than the receipt — usually a misread line). Manual:
+  // chargesTotal is 0 and the gap is the user's pinned-total adjustment.
+  chargesTotal: number;
+  unexplainedDifference: number;
+  // Tip/gratuity/service charge already inside a scanned receipt's total (0
+  // when none), so the UI can warn before a second tip goes on top.
+  receiptTipTotal: number;
 }
 
 // The app's core money primitive: all splitting math runs on integer cents.
@@ -125,6 +135,12 @@ export const computeStats = (state: AppState): SplitStats => {
   const personTotals: Record<string, number> = {};
   Object.entries(totalCents).forEach(([pid, cents]) => { personTotals[pid] = cents / 100; });
 
+  // Charges only ever explain a scanned total; in cents so the leftover gap
+  // doesn't show float noise like $0.0000001.
+  const charges = state.manualEntry ? [] : state.charges;
+  const chargesCents = charges.reduce((sum, c) => sum + toCents(c.amount), 0);
+  const gapCents = toCents(baseTotal) - toCents(itemsSum) - chargesCents;
+
   return {
     personTotals,
     itemAdjustments,
@@ -135,5 +151,8 @@ export const computeStats = (state: AppState): SplitStats => {
     unassignedItemCount,
     itemsTotalSum: itemsSum,
     adjustmentFactor,
+    chargesTotal: fromCents(chargesCents),
+    unexplainedDifference: fromCents(gapCents),
+    receiptTipTotal: fromCents(charges.reduce((sum, c) => (c.kind === 'tip' ? sum + toCents(c.amount) : sum), 0)),
   };
 };

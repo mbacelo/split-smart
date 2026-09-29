@@ -19,6 +19,7 @@ export type AnalyticsEvent =
   | 'receipt-scan-cancelled'
   | 'enter-items-manually'
   | 'receipt-reset'
+  | 'receipt-reset-undone'
   | 'first-item-assigned'
   | 'person-added'
   | 'tip-set'

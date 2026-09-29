@@ -9,6 +9,7 @@ const makeState = (overrides: Partial<AppState> = {}): AppState => ({
   receiptImage: null,
   items: [],
   total: 0,
+  charges: [],
   discount: 0,
   tip: 0,
   tipMode: 'percent',
@@ -231,5 +232,56 @@ describe('computeStats — per-unit weights', () => {
     });
     const weighted = { ...base, unitWeights: { i1: { a: 1, b: 1 } } };
     expect(computeStats(weighted).personTotals).toEqual(computeStats(base).personTotals);
+  });
+});
+
+describe('computeStats receipt breakdown', () => {
+  it('explains the gap between items and a scanned total with its charges', () => {
+    const stats = computeStats(makeState({
+      items: [item('x', 30), item('y', 20)],
+      total: 61.5,
+      charges: [
+        { name: 'Tax', kind: 'tax', amount: 4.5 },
+        { name: 'Service', kind: 'tip', amount: 7 },
+      ],
+    }));
+    expect(stats.chargesTotal).toBe(11.5);
+    expect(stats.unexplainedDifference).toBe(0);
+    expect(stats.receiptTipTotal).toBe(7);
+  });
+
+  it('reports the part of the gap no charge covers, negative when items exceed the total', () => {
+    const over = computeStats(makeState({ items: [item('x', 30)], total: 25, charges: [] }));
+    expect(over.unexplainedDifference).toBe(-5);
+    const under = computeStats(makeState({
+      items: [item('x', 30)],
+      total: 36.1,
+      charges: [{ name: 'VAT', kind: 'tax', amount: 3.3 }],
+    }));
+    // Cents math: no float noise in the leftover.
+    expect(under.unexplainedDifference).toBe(2.8);
+  });
+
+  it('nets a discount charge against the other charges', () => {
+    const stats = computeStats(makeState({
+      items: [item('x', 40)],
+      total: 38,
+      charges: [{ name: 'Tax', kind: 'tax', amount: 2 }, { name: 'Promo', kind: 'discount', amount: -4 }],
+    }));
+    expect(stats.chargesTotal).toBe(-2);
+    expect(stats.unexplainedDifference).toBe(0);
+    expect(stats.receiptTipTotal).toBe(0);
+  });
+
+  it('ignores charges in manual entry, where the gap is the pinned-total adjustment', () => {
+    const stats = computeStats(makeState({
+      manualEntry: true,
+      manualTotalOverride: 55,
+      items: [item('x', 50)],
+      charges: [{ name: 'Service', kind: 'tip', amount: 5 }],
+    }));
+    expect(stats.chargesTotal).toBe(0);
+    expect(stats.unexplainedDifference).toBe(5);
+    expect(stats.receiptTipTotal).toBe(0);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COLOR_PALETTE, nextPersonColor, defaultPersonName, createPerson } from './personColors';
+import { COLOR_PALETTE, nextPersonColor, defaultPersonName, createPerson, personShortLabel, personInitial } from './personColors';
 import { Person } from '../types';
 
 const person = (name: string, color: string, id = name): Person => ({ id, name, color });
@@ -38,6 +38,29 @@ describe('defaultPersonName', () => {
 
   it('starts at Person #1 for an empty list', () => {
     expect(defaultPersonName([])).toBe('Person #1');
+  });
+});
+
+describe('personShortLabel / personInitial', () => {
+  it('uses the number for default names so they stay distinguishable', () => {
+    expect(personShortLabel('Person #1')).toBe('#1');
+    expect(personShortLabel('Person #12')).toBe('#12');
+    expect(personInitial('Person #2')).toBe('2');
+  });
+
+  it('uses the first word / letter for real names', () => {
+    expect(personShortLabel('Ana Lopez')).toBe('Ana');
+    expect(personInitial(' carla ')).toBe('C');
+  });
+
+  it('does not treat names that merely contain "Person" as defaults', () => {
+    expect(personShortLabel('Person 3')).toBe('Person');
+    expect(personInitial('Person 3')).toBe('P');
+  });
+
+  it('falls back to "?" for a blank name', () => {
+    expect(personShortLabel('  ')).toBe('?');
+    expect(personInitial('')).toBe('?');
   });
 });
 

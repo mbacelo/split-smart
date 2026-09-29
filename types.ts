@@ -6,9 +6,24 @@ export interface ReceiptItem {
   originalPrice: number;
 }
 
+// Non-item lines on a scanned receipt (tax, tip/service, fees, discounts). They
+// are already inside the receipt total, so they never change the math — they
+// only explain the gap between the items' sum and the total (see computeStats).
+// `tip` covers tips, gratuity and service charges, so the UI can warn before
+// the user adds a second tip on top.
+export type ChargeKind = 'tax' | 'tip' | 'fee' | 'discount';
+
+export interface ReceiptCharge {
+  name: string;
+  kind: ChargeKind;
+  // Signed: discounts are negative, everything else positive.
+  amount: number;
+}
+
 export interface ProcessedReceipt {
   items: ReceiptItem[];
   total: number;
+  charges: ReceiptCharge[];
 }
 
 export interface Person {
@@ -42,6 +57,9 @@ export interface AppState {
   receiptImage: string | null;
   items: ReceiptItem[];
   total: number;
+  // Scanned receipts only (always [] in manual entry): the tax/tip/fee lines
+  // the scan found. Informational — `total` stays the authoritative figure.
+  charges: ReceiptCharge[];
   discount: number; // Discount as a percentage (0-100)
   // Tip added on top of the post-discount total. The user enters it either as a
   // percentage of that total (tipMode 'percent') or as a flat money amount

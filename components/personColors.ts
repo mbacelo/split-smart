@@ -65,6 +65,22 @@ export const defaultPersonName = (existing: Person[]): string => {
   return `Person #${Math.max(highest + 1, existing.length + 1)}`;
 };
 
+// Default names all start with "Person", so their first word or letter can't
+// tell people apart. These show the number instead ("#2" / "2") and fall back
+// to the first word / letter for real names.
+const defaultNumber = (name: string): string | null =>
+  /^Person #(\d+)$/.exec(name.trim())?.[1] ?? null;
+
+// Compact label for tight spots like the mobile people bar.
+export const personShortLabel = (name: string): string => {
+  const n = defaultNumber(name);
+  return n ? `#${n}` : name.trim().split(/\s+/)[0] || '?';
+};
+
+// Single-character avatar initial.
+export const personInitial = (name: string): string =>
+  defaultNumber(name) ?? (name.trim().charAt(0).toUpperCase() || '?');
+
 // Build a new person with a unique id and an unused color. `name` defaults to a
 // `defaultPersonName` so a freshly-added participant is immediately usable;
 // callers can pass an explicit name (or '' to force the user to type one).

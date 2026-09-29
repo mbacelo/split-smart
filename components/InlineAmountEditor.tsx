@@ -43,7 +43,9 @@ export const InlineAmountEditor: React.FC<{
 }) => {
   const [raw, setRaw] = useState(initialValue ? String(initialValue) : '');
   const apply = () => onApply(parseFloat(raw) || 0);
-  const btnPad = dense ? 'p-1' : 'p-1.5';
+  // Square buttons at the medium control size (dense: a notch smaller, for the
+  // mobile info bar), icons centered.
+  const btnPad = `${dense ? 'w-9 h-9' : 'w-10 h-10'} shrink-0 flex items-center justify-center`;
 
   return (
     <div className={`flex items-center ${dense ? 'gap-1' : 'gap-1.5'} animate-fade-in`}>
@@ -69,7 +71,7 @@ export const InlineAmountEditor: React.FC<{
             if (e.key === 'Enter') { e.preventDefault(); apply(); }
             else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
           }}
-          className={`w-full ${prefix ? (dense ? 'pl-5' : 'pl-6') : 'pl-3'} ${suffix ? 'pr-6' : 'pr-2'} ${dense ? 'py-1 text-base text-right' : 'py-1.5 text-sm'} bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold`}
+          className={`w-full ${prefix ? (dense ? 'pl-5' : 'pl-6') : 'pl-3'} ${suffix ? 'pr-6' : 'pr-2'} ${dense ? 'h-9 text-base text-right' : 'h-10 text-sm'} bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold`}
         />
         {suffix && (
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">

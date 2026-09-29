@@ -88,3 +88,16 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.5s ease-out forwards;
 }
+
+/* Home-screen receipt: person dots "get assigned" to the lines once on load.
+   Only animated when motion is welcome; otherwise the dots are simply there. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes dotPop {
+    from { transform: scale(0); opacity: 0; }
+    70% { transform: scale(1.25); opacity: 1; }
+    to { transform: scale(1); }
+  }
+  .receipt-dot {
+    animation: dotPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+}

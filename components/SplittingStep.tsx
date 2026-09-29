@@ -2,19 +2,24 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Person, UnitWeightState } from '../types';
 import { SplitStats } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
-import { getColorClasses, defaultPersonName } from './personColors';
+import { getColorClasses, defaultPersonName, personInitial, personShortLabel } from './personColors';
 import { PersonCard } from './PersonCard';
 import { PersonAvatar } from './PersonAvatar';
-import { ConfirmDialog } from './ConfirmDialog';
 import { ReceiptPreview } from './ReceiptPreview';
+import { TotalBreakdown } from './TotalBreakdown';
 import { TipControl, TipEditState } from './TipControl';
+import { AdjustmentButton } from './AdjustmentButton';
 import { ItemEditRow, ItemPatch } from './ItemEditRow';
 import { ItemRow } from './ItemRow';
 import { InlineAmountEditor } from './InlineAmountEditor';
 import { PeopleEditor, AddPeopleButtons } from './PeopleEditor';
 import { EditToggle, CancelEditButton } from './EditControls';
-import { Check, Plus, Pencil, Share, Receipt, Contact } from 'lucide-react';
+import { AlertCircle, Check, Plus, Pencil, Share, Receipt, Contact } from 'lucide-react';
 import { contactsPickerSupported } from '../utils/contacts';
+
+// Prefilled when the tip editor opens with no tip set (not applied until the
+// user confirms).
+const DEFAULT_TIP_PERCENT = 10;
 
 interface SplittingStepProps {
   state: AppState;
@@ -100,10 +105,16 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
     unassignedTotal,
     itemsTotalSum,
     adjustmentFactor,
+    receiptTipTotal,
   } = stats;
 
   // Human-readable tip label, e.g. "18%" or "$5.00", for the collapsed pill.
   const tipLabel = state.tipMode === 'percent' ? `${state.tip}%` : formatCurrency(state.tip);
+  // A scanned receipt that already charges a tip/service gets a heads-up on the
+  // tip control (and no prefilled tip), so nobody tips twice by accident.
+  const receiptTipNote = receiptTipTotal > 0
+    ? `Receipt already includes ${formatCurrency(receiptTipTotal)} in tip/service`
+    : undefined;
 
   // The editable pre-discount base total and its label differ by mode:
   // scanned → the scanned receipt total; manual → the items sum, or the pinned
@@ -157,10 +168,6 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   // putting rename/remove in reach right where the people are shown.
   const [isEditingPeople, setIsEditingPeople] = useState(false);
 
-  // Confirm gate for restoring the default people list — a destructive action
-  // (clears the list and assignments), so it asks before wiping.
-  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
-
   // Which item (if any) has its per-unit allocation panel expanded. Single-open:
   // opening one collapses the others so the item list stays compact.
   const [expandedUnitItemId, setExpandedUnitItemId] = useState<string | null>(null);
@@ -197,14 +204,15 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
   // focus with its default "Person #n" pre-selected for instant overwrite.
   const personNameInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
-  // Adding a person only helps if you can name it: drop into edit mode, append,
-  // then focus the new row's field and select its default text so the user can
-  // type a name immediately without clearing it first.
+  // Assign mode: a single tap adds the next "Person #n" and selects it (App does
+  // both), with no keyboard — names are optional, so a quick "we're three" split
+  // shouldn't have to go through the editor. Renaming stays under Edit.
+  const handleQuickAddPerson = () => onAddPerson();
+
+  // Edit mode: append, then focus the new row's field and select its default
+  // text so the user can type a name immediately without clearing it first.
   const handleAddPerson = () => {
     const idsBefore = new Set(state.people.map((p) => p.id));
-    // Snapshot before the first edit so Cancel can also undo a just-added person.
-    if (!isEditingPeople) onStartEditPeople();
-    setIsEditingPeople(true);
     onAddPerson();
     setTimeout(() => {
       for (const [id, el] of personNameInputRefs.current) {
@@ -376,7 +384,8 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {isEditingItems && <CancelEditButton onClick={onCancelEditItems} />}
-                <EditToggle active={isEditingItems} onClick={onToggleEditItems} />
+                {/* Short label on phones so "Assigning to …" beside it isn't cut off. */}
+                <EditToggle active={isEditingItems} onClick={onToggleEditItems} idleLabel="Edit" />
               </div>
             </div>
 
@@ -448,34 +457,17 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             )}
           </div>
 
-          <div className="px-4 lg:px-0 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Discount Section */}
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-[64px] justify-center">
-              {!editingDiscount && state.discount === 0 ? (
-                <button
-                  onClick={() => setEditingDiscount(true)}
-                  className="w-full h-full p-4 flex items-center justify-center gap-2 text-indigo-600 font-semibold hover:bg-indigo-50 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Discount</span>
-                </button>
-              ) : !editingDiscount && state.discount > 0 ? (
-                <button
-                  onClick={() => setEditingDiscount(true)}
-                  className="w-full h-full p-4 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center gap-1.5 text-indigo-600 font-bold text-sm">
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Discount: {state.discount}%</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400">Tap to edit</span>
-                </button>
-              ) : (
-                <div className="p-3">
+          {/* Discount + tip: optional, so a compact row of two medium buttons.
+              Whichever editor is open takes the full row. */}
+          <div className="px-4 lg:px-0 grid grid-cols-2 gap-3">
+            <div className={editingDiscount ? 'col-span-2' : ''}>
+              {editingDiscount ? (
+                <div className="bg-white border border-slate-300 rounded-xl p-2.5">
                   <InlineAmountEditor
                     initialValue={state.discount}
                     onApply={applyDiscountEdit}
                     onCancel={() => setEditingDiscount(false)}
+                    label="Discount"
                     suffix="%"
                     step="1"
                     min={0}
@@ -484,33 +476,51 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     widthClass="flex-1"
                   />
                 </div>
+              ) : (
+                <AdjustmentButton
+                  isSet={state.discount > 0}
+                  label={state.discount > 0 ? `Discount ${state.discount}%` : 'Add discount'}
+                  detail={state.discount > 0 ? `−${formatCurrency(discountAmount)}` : undefined}
+                  tone="indigo"
+                  onClick={() => setEditingDiscount(true)}
+                />
               )}
             </div>
 
-            {/* Tip Section — mirrors the discount control but adds a %/$ unit
-                toggle, since tips are commonly entered either way. */}
-            <TipControl
-              tip={state.tip}
-              tipLabel={tipLabel}
-              initialValue={state.tip}
-              editing={editingTip}
-              onOpen={openTipEdit}
-              onChangeMode={(mode) => setEditingTip((prev) => ({ ...prev, mode }))}
-              onApply={applyTipEdit}
-              onCancel={cancelTipEdit}
-              onClear={clearTip}
-            />
+            {/* Tip mirrors the discount control but adds a %/$ unit toggle,
+                since tips are commonly entered either way. */}
+            <div className={editingTip.active ? 'col-span-2' : ''}>
+              <TipControl
+                tip={state.tip}
+                tipLabel={tipLabel}
+                tipAmountLabel={state.tipMode === 'percent' ? `+${formatCurrency(tipAmount)}` : undefined}
+                initialValue={state.tip}
+                editing={editingTip}
+                onOpen={openTipEdit}
+                onChangeMode={(mode) => setEditingTip((prev) => ({ ...prev, mode }))}
+                onApply={applyTipEdit}
+                onCancel={cancelTipEdit}
+                onClear={clearTip}
+                defaultPercent={receiptTipNote ? undefined : DEFAULT_TIP_PERCENT}
+              />
+            </div>
+
+            {receiptTipNote && (
+              <p className="col-span-2 -mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {receiptTipNote}
+              </p>
+            )}
           </div>
 
-          {/* Scaling logic summary */}
-          {adjustmentFactor !== 1 && (
-            <div className="mx-4 lg:mx-0 bg-yellow-50 text-yellow-800 text-xs p-3 rounded-lg border border-yellow-200 flex gap-2">
-              <span className="font-bold shrink-0">Scaling Logic:</span>
-              <p>
-                Base items sum to {formatCurrency(itemsTotalSum)}. Final total is {formatCurrency(effectiveTotal)}.
-                Prices adjusted by {adjustmentFactor >= 1 ? '+' : ''}{((adjustmentFactor - 1) * 100).toFixed(1)}% to cover fees/tips.
-              </p>
-            </div>
+          {/* Why item prices are adjusted: items → receipt charges → final total */}
+          {adjustmentFactor !== 1 && itemsTotalSum > 0 && !isEditingItems && (
+            <TotalBreakdown
+              state={state}
+              stats={stats}
+              onCheckReceipt={receiptImage ? () => setIsReceiptZoomed(true) : undefined}
+              onEditItems={onToggleEditItems}
+            />
           )}
 
         </div>
@@ -542,7 +552,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   onAddPerson={handleAddPerson}
                   canPickContacts={canPickContacts}
                   onAddFromContacts={handleAddFromContacts}
-                  onRestoreDefault={() => setShowRestoreConfirm(true)}
+                  onRestoreDefault={onResetPeople}
                 />
               ) : (
                 <>
@@ -560,7 +570,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     );
                   })}
                   <AddPeopleButtons
-                    onAddPerson={handleAddPerson}
+                    onAddPerson={handleQuickAddPerson}
                     canPickContacts={canPickContacts}
                     onAddFromContacts={handleAddFromContacts}
                   />
@@ -604,18 +614,32 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
 
       {/* Mobile Bottom People Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_16px_rgba(0,0,0,0.1)] z-40 pb-safe animate-slide-up">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 bg-slate-50/50">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              {isEditingPeople ? 'Edit people' : 'Select to assign'}
-            </span>
-            <EditToggle active={isEditingPeople} onClick={toggleEditPeople} idleLabel="Edit" />
-            {isEditingPeople && <CancelEditButton onClick={cancelEditPeople} />}
-          </div>
-          <button onClick={onShare} className="flex items-center gap-1.5 text-indigo-600 font-bold text-xs">
-            <Share className="w-3.5 h-3.5" />
-            Share Split
-          </button>
+        {/* Medium-size controls. While editing, only Cancel / Done show:
+            sharing mid-rename makes no sense, and there isn't room for all. */}
+        <div className="flex items-center justify-between gap-2 px-4 py-1.5 border-b border-slate-100 bg-slate-50/50">
+          {isEditingPeople ? (
+            <>
+              <span className="text-sm font-semibold text-slate-600">Edit people</span>
+              <div className="flex items-center gap-2">
+                <CancelEditButton onClick={cancelEditPeople} />
+                <EditToggle active onClick={toggleEditPeople} idleLabel="Edit" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-semibold text-slate-500 truncate">Select to assign</span>
+                <EditToggle active={false} onClick={toggleEditPeople} idleLabel="Edit" />
+              </div>
+              <button
+                onClick={onShare}
+                className="shrink-0 flex items-center gap-1.5 min-h-10 px-3.5 rounded-full text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+              >
+                <Share className="w-4 h-4" />
+                Share
+              </button>
+            </>
+          )}
         </div>
         {isEditingPeople ? (
           <div className="px-4 py-3 space-y-2 max-h-[45vh] overflow-y-auto">
@@ -628,7 +652,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
               onAddPerson={handleAddPerson}
               canPickContacts={canPickContacts}
               onAddFromContacts={handleAddFromContacts}
-              onRestoreDefault={() => setShowRestoreConfirm(true)}
+              onRestoreDefault={onResetPeople}
             />
           </div>
         ) : (
@@ -652,7 +676,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                     className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm border-2 transition-colors
                       ${isActive ? `${pc.borderStrong} ${pc.bgSolid} shadow-md` : `border-transparent ${pc.bgSolidMuted}`}`}
                   >
-                    {person.name.charAt(0)}
+                    {personInitial(person.name)}
                   </PersonAvatar>
                   {isActive && (
                     <div className={`absolute -top-1 -right-1 w-4 h-4 ${pc.bgSolidStrong} rounded-full border-2 border-white flex items-center justify-center`}>
@@ -661,7 +685,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
                   )}
                 </div>
                 <span className={`text-[11px] font-bold truncate max-w-[64px] ${isActive ? 'text-slate-800' : 'text-slate-500'}`}>
-                  {person.name.split(' ')[0]}
+                  {personShortLabel(person.name)}
                 </span>
                 <span className={`text-[10px] font-semibold ${isActive ? pc.text : 'text-slate-400'}`}>
                   {formatCurrency(total)}
@@ -670,7 +694,7 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
             );
           })}
           <button
-            onClick={handleAddPerson}
+            onClick={handleQuickAddPerson}
             title="Add person"
             aria-label="Add person"
             className="flex flex-col items-center flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
@@ -698,18 +722,6 @@ export const SplittingStep: React.FC<SplittingStepProps> = ({
         </div>
         )}
       </div>
-
-      {/* Restore-default-people confirmation (covers both desktop & mobile triggers) */}
-      <ConfirmDialog
-        isOpen={showRestoreConfirm}
-        title="Restore default people?"
-        message="This replaces your current people with the original two (Person #1 and #2) and clears their item assignments."
-        confirmLabel="Restore"
-        cancelLabel="Cancel"
-        variant="danger"
-        onConfirm={() => { onResetPeople(); setShowRestoreConfirm(false); }}
-        onCancel={() => setShowRestoreConfirm(false)}
-      />
 
       {/* Full-screen receipt preview */}
       {isReceiptZoomed && receiptImage && (

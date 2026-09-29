@@ -25,6 +25,7 @@ const makeState = (overrides: Partial<AppState> = {}): AppState => ({
   receiptImage: null,
   items: [{ id: 'i1', name: 'Pizza', quantity: 1, originalPrice: 12 }],
   total: 12,
+  charges: [],
   discount: 0,
   tip: 0,
   tipMode: 'percent',

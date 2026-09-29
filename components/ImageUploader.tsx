@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Camera, Upload, Receipt } from 'lucide-react';
+import { Camera, Upload } from 'lucide-react';
 import { downscaleImage } from '../utils/image';
 
 interface ImageUploaderProps {
@@ -81,17 +81,19 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected, o
     processFile(e.dataTransfer.files?.[0]);
   };
 
+  // Phones: two stacked buttons, no frame. From `sm` up the same buttons sit
+  // inside a dashed drop zone, since drag & drop only exists on desktop.
   return (
-    <div 
-      className={`w-full max-w-xl mx-auto border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center transition-all duration-300 relative
-        ${isDragging ? 'border-indigo-500 bg-indigo-50 scale-[1.02]' : 'border-slate-300 bg-white shadow-sm hover:border-indigo-400 hover:shadow-md'}`}
+    <div
+      className={`relative w-full transition-colors duration-200 sm:border-2 sm:border-dashed sm:rounded-3xl sm:p-6
+        ${isDragging ? 'sm:border-indigo-500 sm:bg-indigo-50' : 'sm:border-slate-300 sm:bg-white sm:hover:border-indigo-400'}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Processing overlay while we read + downscale the chosen image */}
       {isProcessing && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/85 backdrop-blur-sm rounded-3xl animate-fade-in">
+        <div className="absolute -inset-1 z-10 flex flex-col items-center justify-center gap-3 bg-white/85 backdrop-blur-sm rounded-3xl animate-fade-in">
           <svg className="animate-spin w-7 h-7 text-indigo-600" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
@@ -101,60 +103,42 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelected, o
       )}
 
       {/* Hidden inputs */}
-      <input 
-        type="file" 
-        ref={galleryInputRef} 
-        onChange={handleFileChange} 
-        accept="image/*,.heic,.heif" 
-        className="hidden" 
+      <input
+        type="file"
+        ref={galleryInputRef}
+        onChange={handleFileChange}
+        accept="image/*,.heic,.heif"
+        className="hidden"
       />
-      <input 
-        type="file" 
-        ref={cameraInputRef} 
-        onChange={handleFileChange} 
-        accept="image/*" 
-        capture="environment" 
-        className="hidden" 
+      <input
+        type="file"
+        ref={cameraInputRef}
+        onChange={handleFileChange}
+        accept="image/*"
+        capture="environment"
+        className="hidden"
       />
-      
-      <div className="flex flex-col items-center justify-center space-y-6">
-        <div className="flex flex-col items-center">
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-4 border border-indigo-100">
-            <Receipt className="w-8 h-8" />
-          </div>
-          <h3 className="text-2xl font-bold text-slate-800 tracking-tight">Add a Receipt</h3>
-          <p className="text-slate-500 mt-2 max-w-xs mx-auto text-sm sm:text-base leading-relaxed">
-            Snap a photo or upload an image. Our AI will handle the math for you.
-          </p>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md pt-2">
-          <button
-            onClick={() => cameraInputRef.current?.click()}
-            disabled={isProcessing}
-            className="group flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-2xl transition-all active:scale-95 shadow-lg shadow-indigo-100 disabled:opacity-60 disabled:pointer-events-none"
-          >
-            <Camera className="w-6 h-6 transition-transform group-hover:scale-110" />
-            <span>Take Photo</span>
-          </button>
-          
-          <button
-            onClick={() => galleryInputRef.current?.click()}
-            disabled={isProcessing}
-            className="group flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-slate-700 font-bold py-4 px-6 rounded-2xl transition-all active:scale-95 disabled:opacity-60 disabled:pointer-events-none"
-          >
-            <Upload className="w-6 h-6 transition-transform group-hover:-translate-y-1" />
-            <span>Gallery</span>
-          </button>
-        </div>
-
-        <div className="hidden sm:block pt-2">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-            — or drag & drop —
-          </p>
-        </div>
-                
+      <div className="flex flex-col gap-2.5">
+        <button
+          onClick={() => cameraInputRef.current?.click()}
+          disabled={isProcessing}
+          className="flex items-center justify-center gap-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-5 rounded-2xl shadow-lg shadow-indigo-200 transition-colors active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-60 disabled:pointer-events-none"
+        >
+          <Camera className="w-5 h-5 shrink-0" />
+          <span>Take photo</span>
+        </button>
+        <button
+          onClick={() => galleryInputRef.current?.click()}
+          disabled={isProcessing}
+          className="flex items-center justify-center gap-2.5 bg-white border border-slate-300 hover:border-indigo-400 hover:text-indigo-600 text-slate-700 font-semibold py-3.5 px-5 rounded-2xl transition-colors active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-60 disabled:pointer-events-none"
+        >
+          <Upload className="w-5 h-5 shrink-0" />
+          <span>Upload from gallery</span>
+        </button>
       </div>
+
+      <p className="hidden sm:block mt-3 text-sm text-slate-400">or drop a receipt photo here</p>
     </div>
   );
 };

@@ -3,7 +3,7 @@ import { Person } from '../types';
 import { ItemAdjustment, splitCentsWeighted, toCents, fromCents } from '../state/stats';
 import { blurOnWheel } from '../utils/input';
 import { formatCurrency } from '../utils/currency';
-import { getColorClasses } from './personColors';
+import { getColorClasses, personInitial } from './personColors';
 import { PersonAvatar } from './PersonAvatar';
 import { Minus, Plus, RotateCcw, Scale } from 'lucide-react';
 
@@ -66,7 +66,7 @@ export const UnitAllocationPanel: React.FC<{
                   photo={person.photo}
                   className={`w-6 h-6 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-[11px] border ${c.borderSoft}`}
                 >
-                  {person.name.trim().charAt(0).toUpperCase() || '?'}
+                  {personInitial(person.name)}
                 </PersonAvatar>
                 <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700">{person.name}</span>
                 <span className={`text-xs font-semibold w-16 text-right ${w > 0 ? 'text-slate-500' : 'text-slate-300'}`}>

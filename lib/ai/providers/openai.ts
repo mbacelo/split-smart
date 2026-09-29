@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 import { AIProvider, ReceiptAnalysis, RECEIPT_PROMPT } from "../types.js";
 
-// JSON schema forcing the model to return exactly { items: [{name, price}], total }.
+// JSON schema forcing the model to return exactly
+// { items: [{name, quantity, price}], charges: [{name, kind, amount}], total }.
 const RECEIPT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -19,9 +20,22 @@ const RECEIPT_SCHEMA = {
         required: ["name", "quantity", "price"],
       },
     },
+    charges: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          kind: { type: "string", enum: ["tax", "tip", "fee", "discount"] },
+          amount: { type: "number" },
+        },
+        required: ["name", "kind", "amount"],
+      },
+    },
     total: { type: "number" },
   },
-  required: ["items", "total"],
+  required: ["items", "charges", "total"],
 } as const;
 
 /**

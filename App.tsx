@@ -27,14 +27,16 @@ export default function App() {
   const [state, setState] = useState<AppState>(makeInitialState);
 
   const [activePersonId, setActivePersonId] = useState<string | null>(state.people[0]?.id || null);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
   // Gates the Share action when money is still unassigned (see handleShare).
   const [showUnassignedShareConfirm, setShowUnassignedShareConfirm] = useState(false);
   // Lightweight toast: a message plus a variant that picks the icon/accent.
   // Replaces browser alert()s for transient feedback (copy confirmations, image
-  // errors) so notices stay in-app and on-brand.
-  const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' } | null>(null);
-  const notify = (message: string, variant: 'success' | 'error' = 'success') => setToast({ message, variant });
+  // errors) so notices stay in-app and on-brand. An optional action (Undo) lets
+  // a destructive tap apply immediately instead of behind a confirm dialog.
+  type ToastAction = { label: string; onClick: () => void };
+  const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error'; action?: ToastAction } | null>(null);
+  const notify = (message: string, variant: 'success' | 'error' = 'success', action?: ToastAction) =>
+    setToast({ message, variant, action });
   // Transient UI flag (not persisted): flips the item list between assign mode
   // and edit mode where rows become editable name/qty/price fields.
   const [isEditingItems, setIsEditingItems] = useState(false);
@@ -114,10 +116,10 @@ export default function App() {
   // Persist the in-progress split (and its receipt image, on a separate key).
   useSessionPersistence(state);
 
-  // Toast timeout
+  // Toast timeout — longer when it offers an action, so there's time to hit Undo.
   useEffect(() => {
     if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
+      const timer = setTimeout(() => setToast(null), toast.action ? 6000 : 3000);
       return () => clearTimeout(timer);
     }
   }, [toast]);
@@ -156,6 +158,8 @@ export default function App() {
         step: 'splitting',
         items: result.items,
         total: result.total,
+        // Older servers didn't send charges; the breakdown just shows the gap.
+        charges: result.charges ?? [],
         discount: 0,
         tip: 0,
         tipMode: 'percent',
@@ -225,6 +229,7 @@ export default function App() {
       receiptImage: null,
       items: [{ id: makeId(), name: '', quantity: 1, originalPrice: 0 }],
       total: 0,
+      charges: [],
       discount: 0,
       tip: 0,
       tipMode: 'percent',
@@ -425,16 +430,30 @@ export default function App() {
     }
   };
 
-  const handleReset = () => setShowResetConfirm(true);
-
-  const performReset = () => {
+  // Start over applies immediately and offers Undo in a toast, rather than a
+  // confirm dialog — faster, and a mis-tap on the header button is recoverable.
+  const handleReset = () => {
     trackEvent('receipt-reset');
+    // People are kept by reset, so the undo restores everything but them.
+    const { people: _people, ...before } = state;
+    const wasEditingItems = isEditingItems;
+    notify('Receipt cleared', 'success', {
+      label: 'Undo',
+      onClick: () => {
+        trackEvent('receipt-reset-undone');
+        // Only while still on the upload screen: if a new scan or manual
+        // split has started since, restoring would clobber it.
+        setState(prev => (prev.step === 'upload' ? { ...prev, ...before } : prev));
+        setIsEditingItems(wasEditingItems);
+      },
+    });
     setState(prev => ({
       ...prev,
       step: 'upload',
       receiptImage: null,
       items: [],
       total: 0,
+      charges: [],
       discount: 0,
       tip: 0,
       tipMode: 'percent',
@@ -445,7 +464,6 @@ export default function App() {
       manualTotalOverride: null,
     }));
     setIsEditingItems(false);
-    setShowResetConfirm(false);
   };
 
   // Quick-add a participant from the splitting view (no modal): append an
@@ -509,10 +527,20 @@ export default function App() {
     savePeople(newPeople);
   };
 
+  // Restore default people also applies immediately with an Undo toast.
   const handleResetPeople = () => {
+    const before = { people: state.people, assignments: state.assignments, unitWeights: state.unitWeights };
+    const hadSavedPeople = hasSavedPeople();
     const defaultPeople = getInitialPeople(getUserFirstName() ?? undefined, getUser()?.picture ?? undefined);
     setState(prev => ({ ...prev, people: defaultPeople, assignments: {}, unitWeights: {} }));
     clearPeople();
+    notify('People restored to default', 'success', {
+      label: 'Undo',
+      onClick: () => {
+        setState(prev => ({ ...prev, ...before }));
+        if (hadSavedPeople) savePeople(before.people);
+      },
+    });
   };
 
   // Total / discount / tip mutations. The transient editor UI (which figure is
@@ -696,17 +724,6 @@ export default function App() {
       />
 
       <ConfirmDialog
-        isOpen={showResetConfirm}
-        title="Start over?"
-        message="This clears the current receipt, items, and assignments so you can scan a new one. Your saved people are kept."
-        confirmLabel="Start Over"
-        cancelLabel="Cancel"
-        variant="danger"
-        onConfirm={performReset}
-        onCancel={() => setShowResetConfirm(false)}
-      />
-
-      <ConfirmDialog
         isOpen={showUnassignedShareConfirm}
         title="Some items aren't assigned"
         message={`${formatCurrency(unassignedTotal)} isn't assigned to anyone yet, so the shares won't add up to the total. Share the summary anyway?`}
@@ -719,12 +736,20 @@ export default function App() {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] animate-slide-down max-w-[calc(100vw-2rem)]" role="status" aria-live="polite">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] animate-slide-down w-max max-w-[calc(100vw-2rem)]" role="status" aria-live="polite">
           <div className="bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 text-sm font-semibold border border-white/10">
             {toast.variant === 'error'
               ? <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
               : <Check className="w-4 h-4 text-green-400 shrink-0" />}
             <span>{toast.message}</span>
+            {toast.action && (
+              <button
+                onClick={() => { toast.action!.onClick(); setToast(null); }}
+                className="ml-2 -mr-2 px-3 py-1 rounded-full text-indigo-300 font-bold hover:bg-white/10 transition-colors"
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -840,7 +865,7 @@ export default function App() {
           </div>
         )}
 
-        {state.step === 'upload' && <UploadStep onImageSelected={handleImageSelected} onManualEntry={startManualEntry} onError={(msg) => notify(msg, 'error')} />}
+        {state.step === 'upload' && <UploadStep onImageSelected={handleImageSelected} onManualEntry={startManualEntry} onError={(msg) => notify(msg, 'error')} signedIn={!!user} />}
 
         {state.step === 'analyzing' && <AnalyzingStep onCancel={cancelAnalyze} />}
 

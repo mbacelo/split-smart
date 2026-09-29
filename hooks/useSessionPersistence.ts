@@ -10,7 +10,7 @@ export function useSessionPersistence(state: AppState): void {
   // rather than re-serialized to localStorage on every assignment tap/keystroke.
   useEffect(() => {
     saveSession(state);
-  }, [state.step, state.items, state.total, state.discount, state.tip, state.tipMode, state.assignments, state.unitWeights, state.manualTotalOverride]);
+  }, [state.step, state.items, state.total, state.charges, state.discount, state.tip, state.tipMode, state.assignments, state.unitWeights, state.manualTotalOverride]);
 
   // Persist the receipt image separately, only when it actually changes.
   useEffect(() => {

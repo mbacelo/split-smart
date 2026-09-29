@@ -5,7 +5,7 @@
 // — easy to trigger on mobile — doesn't wipe work and force another paid AI
 // call. People live under their own key so resetting a session keeps them.
 
-import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem } from '../types';
+import { AppState, Person, AssignmentState, UnitWeightState, ReceiptItem, ReceiptCharge } from '../types';
 import { getUserFirstName, getUserPicture } from '../services/auth';
 
 const PEOPLE_KEY = 'splitSmart_people';
@@ -17,13 +17,14 @@ const IMAGE_KEY = 'splitSmart_sessionImage';
 
 // Bump when the persisted session shape changes so stale data is discarded
 // rather than rehydrated into an incompatible state. Exported for tests only.
-export const SESSION_VERSION = 6;
+export const SESSION_VERSION = 7;
 
 interface PersistedSession {
   v: number;
   step: AppState['step'];
   items: ReceiptItem[];
   total: number;
+  charges?: ReceiptCharge[];
   discount: number;
   tip?: number;
   tipMode?: AppState['tipMode'];
@@ -82,6 +83,7 @@ export const makeInitialState = (): AppState => {
     receiptImage: session ? loadSessionImage() : null,
     items: session?.items ?? [],
     total: session?.total ?? 0,
+    charges: session?.charges ?? [],
     discount: session?.discount ?? 0,
     tip: session?.tip ?? 0,
     tipMode: session?.tipMode ?? 'percent',
@@ -119,6 +121,7 @@ export const saveSession = (state: AppState): void => {
       step: state.step,
       items: state.items,
       total: state.total,
+      charges: state.charges,
       discount: state.discount,
       tip: state.tip,
       tipMode: state.tipMode,

@@ -2,7 +2,7 @@ import React from 'react';
 import { Person, UnitWeightState } from '../types';
 import { ItemAdjustment } from '../state/stats';
 import { formatCurrency } from '../utils/currency';
-import { getColorClasses } from './personColors';
+import { getColorClasses, personInitial } from './personColors';
 import { PersonAvatar } from './PersonAvatar';
 import { UnitAllocationPanel } from './UnitAllocationPanel';
 import { Check, Scale, Users } from 'lucide-react';
@@ -102,7 +102,7 @@ export const ItemRow: React.FC<{
                   className={`w-5 h-5 rounded-full border border-white flex items-center justify-center text-[9px] text-white font-bold uppercase shadow-sm ${personColorClass(pid)}`}
                   title={p.name}
                 >
-                  {p.name.charAt(0)}
+                  {personInitial(p.name)}
                 </PersonAvatar>
               );
             })}
@@ -116,18 +116,20 @@ export const ItemRow: React.FC<{
               <p className="text-xs text-slate-400 line-through">{formatCurrency(item.originalPrice)}</p>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
+          {/* Small chips: light to look at, but each has a 44px-tall touch area
+              (the ::after overlay) so they're easy to hit. */}
+          <div className="flex items-center gap-2">
             {canWeightByUnit && (
               <button
                 onClick={(e) => { e.stopPropagation(); onToggleUnitPanel(item.id); }}
                 title="Split by units consumed"
                 aria-pressed={hasWeights || isUnitExpanded}
-                className={`inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 transition-colors active:scale-95
+                className={`relative inline-flex items-center gap-1 h-7 text-xs font-semibold rounded-full px-2.5 transition-colors active:scale-95 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-['']
                   ${hasWeights || isUnitExpanded
                     ? 'bg-amber-500 text-white'
                     : 'bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600'}`}
               >
-                <Scale className="w-3 h-3" />
+                <Scale className="w-3.5 h-3.5" />
                 By unit
               </button>
             )}
@@ -135,12 +137,12 @@ export const ItemRow: React.FC<{
               onClick={(e) => { e.stopPropagation(); onToggleAllAssignment(item.id); }}
               title={allAssigned ? 'Remove everyone from this item' : 'Split this item across everyone'}
               aria-pressed={allAssigned}
-              className={`inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 transition-colors active:scale-95
+              className={`relative inline-flex items-center gap-1 h-7 text-xs font-semibold rounded-full px-2.5 transition-colors active:scale-95 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-['']
                 ${allAssigned
                   ? 'bg-indigo-600 text-white'
                   : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}
             >
-              <Users className="w-3 h-3" />
+              <Users className="w-3.5 h-3.5" />
               All
             </button>
           </div>

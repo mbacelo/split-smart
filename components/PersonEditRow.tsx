@@ -1,6 +1,6 @@
 import React from 'react';
 import { Person } from '../types';
-import { getColorClasses } from './personColors';
+import { getColorClasses, personInitial } from './personColors';
 import { PersonAvatar } from './PersonAvatar';
 import { Trash2 } from 'lucide-react';
 
@@ -23,7 +23,7 @@ export const PersonEditRow: React.FC<{
         photo={person.photo}
         className={`w-10 h-10 shrink-0 rounded-full ${c.bgSoft} flex items-center justify-center ${c.text} font-bold text-sm border ${c.borderSoft} shadow-sm`}
       >
-        {person.name.trim().charAt(0).toUpperCase() || '?'}
+        {personInitial(person.name)}
       </PersonAvatar>
       <input
         type="text"
