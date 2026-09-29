@@ -1,4 +1,3 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { verifyAdmin } from "../lib/server/adminAuth.js";
 import { makeRateLimiter } from "../lib/server/googleAuth.js";
 import {
@@ -35,65 +34,69 @@ function cleanEmail(value: unknown): string | null {
   return email;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed." });
-  }
-
-  // One 403 for "no token", "bad token" and "not an admin" alike — the client
-  // only needs to know it isn't getting in.
-  const admin = await verifyAdmin(req.headers.authorization);
-  if (!admin) {
-    return res.status(403).json({ error: "Not authorized." });
-  }
-  if (rateLimited(admin.email)) {
-    return res.status(429).json({ error: "Too many requests. Please slow down." });
-  }
-
-  if (!isDbConfigured()) {
-    console.error("access-requests called but DATABASE_URL is not set.");
-    return res.status(503).json({ error: "Access management isn't available right now. Please try again later." });
-  }
-
-  try {
-    if (req.method === "GET") {
-      return res.status(200).json({ requests: await listAccessRequests() });
+export default {
+  async fetch(req: Request): Promise<Response> {
+    if (req.method !== "GET" && req.method !== "POST") {
+      return Response.json({ error: "Method not allowed." }, { status: 405 });
     }
 
-    const action = req.body?.action;
-
-    if (action === "grant") {
-      const email = cleanEmail(req.body?.email);
-      if (!email) return res.status(400).json({ error: "Enter a valid email address." });
-      // No name: the admin only typed an email. If this person later signs in
-      // via the waitlist their real name fills in (grantAccess keeps whichever
-      // name is already on file).
-      return res.status(200).json({ request: await grantAccess(email, null) });
+    // One 403 for "no token", "bad token" and "not an admin" alike — the client
+    // only needs to know it isn't getting in.
+    const admin = await verifyAdmin(req.headers.get("authorization"));
+    if (!admin) {
+      return Response.json({ error: "Not authorized." }, { status: 403 });
+    }
+    if (rateLimited(admin.email)) {
+      return Response.json({ error: "Too many requests. Please slow down." }, { status: 429 });
     }
 
-    if (action === "set-status") {
-      const email = cleanEmail(req.body?.email);
-      if (!email) return res.status(400).json({ error: "Enter a valid email address." });
+    if (!isDbConfigured()) {
+      console.error("access-requests called but DATABASE_URL is not set.");
+      return Response.json({ error: "Access management isn't available right now. Please try again later." }, { status: 503 });
+    }
 
-      const status = req.body?.status;
-      if (!STATUSES.includes(status)) {
-        return res.status(400).json({ error: "Unknown status." });
-      }
-      // Admin access comes from ADMIN_EMAILS, so downgrading yourself wouldn't
-      // actually lock you out — it would just look like the click did nothing.
-      if (email === admin.email && status !== "allowed") {
-        return res.status(400).json({ error: "You can't remove your own access." });
+    try {
+      if (req.method === "GET") {
+        return Response.json({ requests: await listAccessRequests() });
       }
 
-      const request = await setAccessStatus(email, status);
-      if (!request) return res.status(404).json({ error: "No access request for that email." });
-      return res.status(200).json({ request });
-    }
+      // Malformed JSON falls through to "Unknown action." like a missing body.
+      const body = await req.json().catch(() => null);
+      const action = body?.action;
 
-    return res.status(400).json({ error: "Unknown action." });
-  } catch (err) {
-    // Never leak DB errors/connection strings to the client.
-    console.error("Access management error:", err);
-    return res.status(502).json({ error: "Couldn't update access. Please try again later." });
-  }
-}
+      if (action === "grant") {
+        const email = cleanEmail(body?.email);
+        if (!email) return Response.json({ error: "Enter a valid email address." }, { status: 400 });
+        // No name: the admin only typed an email. If this person later signs in
+        // via the waitlist their real name fills in (grantAccess keeps whichever
+        // name is already on file).
+        return Response.json({ request: await grantAccess(email, null) });
+      }
+
+      if (action === "set-status") {
+        const email = cleanEmail(body?.email);
+        if (!email) return Response.json({ error: "Enter a valid email address." }, { status: 400 });
+
+        const status = body?.status;
+        if (!STATUSES.includes(status)) {
+          return Response.json({ error: "Unknown status." }, { status: 400 });
+        }
+        // Admin access comes from ADMIN_EMAILS, so downgrading yourself wouldn't
+        // actually lock you out — it would just look like the click did nothing.
+        if (email === admin.email && status !== "allowed") {
+          return Response.json({ error: "You can't remove your own access." }, { status: 400 });
+        }
+
+        const request = await setAccessStatus(email, status);
+        if (!request) return Response.json({ error: "No access request for that email." }, { status: 404 });
+        return Response.json({ request });
+      }
+
+      return Response.json({ error: "Unknown action." }, { status: 400 });
+    } catch (err) {
+      // Never leak DB errors/connection strings to the client.
+      console.error("Access management error:", err);
+      return Response.json({ error: "Couldn't update access. Please try again later." }, { status: 502 });
+    }
+  },
+};

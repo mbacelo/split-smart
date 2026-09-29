@@ -13,7 +13,7 @@ const googleClient = new OAuth2Client();
 
 /** Verifies the Google ID token from an Authorization header and returns the
  * verified email (+ display name when present), or null. */
-export async function verifyUser(authHeader: string | undefined): Promise<VerifiedUser | null> {
+export async function verifyUser(authHeader: string | null): Promise<VerifiedUser | null> {
   if (!authHeader?.startsWith("Bearer ")) return null;
   // Fail closed on a missing client id. google-auth-library skips the `aud`
   // check entirely when `audience` is undefined, so an unset GOOGLE_CLIENT_ID

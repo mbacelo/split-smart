@@ -1,4 +1,3 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { verifyUser, makeRateLimiter } from "../lib/server/googleAuth.js";
 import { isDbConfigured, upsertWaitlistRequest } from "../lib/server/db.js";
 
@@ -7,30 +6,32 @@ import { isDbConfigured, upsertWaitlistRequest } from "../lib/server/db.js";
 
 const rateLimited = makeRateLimiter(3, 60_000);
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed." });
-  }
+export default {
+  async fetch(req: Request): Promise<Response> {
+    if (req.method !== "POST") {
+      return Response.json({ error: "Method not allowed." }, { status: 405 });
+    }
 
-  const user = await verifyUser(req.headers.authorization);
-  if (!user) {
-    return res.status(401).json({ error: "Sign in to continue." });
-  }
-  if (rateLimited(user.email)) {
-    return res.status(429).json({ error: "Too many requests. Please slow down." });
-  }
+    const user = await verifyUser(req.headers.get("authorization"));
+    if (!user) {
+      return Response.json({ error: "Sign in to continue." }, { status: 401 });
+    }
+    if (rateLimited(user.email)) {
+      return Response.json({ error: "Too many requests. Please slow down." }, { status: 429 });
+    }
 
-  if (!isDbConfigured()) {
-    console.error("join-waitlist called but DATABASE_URL is not set.");
-    return res.status(503).json({ error: "The waitlist isn't available right now. Please try again later." });
-  }
+    if (!isDbConfigured()) {
+      console.error("join-waitlist called but DATABASE_URL is not set.");
+      return Response.json({ error: "The waitlist isn't available right now. Please try again later." }, { status: 503 });
+    }
 
-  try {
-    const status = await upsertWaitlistRequest(user.email, user.name);
-    return res.status(200).json({ status });
-  } catch (err) {
-    // Never leak DB errors/connection strings to the client.
-    console.error("Waitlist error:", err);
-    return res.status(502).json({ error: "Couldn't save your request. Please try again later." });
-  }
-}
+    try {
+      const status = await upsertWaitlistRequest(user.email, user.name);
+      return Response.json({ status });
+    } catch (err) {
+      // Never leak DB errors/connection strings to the client.
+      console.error("Waitlist error:", err);
+      return Response.json({ error: "Couldn't save your request. Please try again later." }, { status: 502 });
+    }
+  },
+};

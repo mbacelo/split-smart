@@ -59,35 +59,28 @@ function devApiPlugin(env: Record<string, string>): Plugin {
         }
 
         try {
-          // Buffer + parse the JSON body (the handler expects req.body). A GET
-          // has none, so skip straight past it.
-          let body: unknown = {};
+          // Adapt the Node request to the Web Request the handler takes. A GET
+          // has no body, so skip straight past buffering it.
+          let body: string | undefined;
           if (req.method !== 'GET') {
             const chunks: Buffer[] = [];
             for await (const chunk of req) chunks.push(chunk as Buffer);
-            const rawBody = Buffer.concat(chunks).toString('utf8');
-            body = rawBody ? JSON.parse(rawBody) : {};
+            body = Buffer.concat(chunks).toString('utf8');
           }
-
-          // Adapt Node req/res to the minimal VercelRequest/VercelResponse shape
-          // the handler uses (method, headers, body / status().json()).
-          const vReq = { method: req.method, headers: req.headers, body } as any;
-          const vRes = {
-            status(code: number) {
-              res.statusCode = code;
-              return this;
-            },
-            json(obj: unknown) {
-              res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify(obj));
-              return this;
-            },
-          } as any;
+          const request = new Request(`http://${req.headers.host}/api${req.url}`, {
+            method: req.method,
+            headers: req.headers as Record<string, string>,
+            body,
+          });
 
           // Load the real handler on demand; Vite transpiles the TS + .js ESM
           // specifiers, and its lib/ import chain resolves as in production.
           const mod = await server.ssrLoadModule(`/api/${name}.ts`);
-          await mod.default(vReq, vRes);
+          const response: Response = await mod.default.fetch(request);
+
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
         } catch (err) {
           console.error(`[dev-api] ${name} error:`, err);
           if (!res.writableEnded) {

@@ -23,7 +23,7 @@ export function isAdminEmail(email: string): boolean {
 /** The verified caller when they're an admin, otherwise null — covers a missing
  * header, an invalid token, and a valid token for a non-admin alike, so callers
  * answer all three with the same 403 and leak nothing about who is an admin. */
-export async function verifyAdmin(authHeader: string | undefined): Promise<VerifiedUser | null> {
+export async function verifyAdmin(authHeader: string | null): Promise<VerifiedUser | null> {
   const user = await verifyUser(authHeader);
   if (!user || !isAdminEmail(user.email)) return null;
   return user;
