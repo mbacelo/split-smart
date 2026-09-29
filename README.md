@@ -5,132 +5,71 @@ the cost among people. React + TypeScript + Vite PWA, deployed on Vercel.
 
 ## How it works
 
-The app is free to use without an account — manual entry, assigning, and the
-splitting math all work signed out. **Signing in is required only for the AI
-receipt scan** (the one feature that costs money), and scanning itself is
-limited to approved accounts. Non-approved users can join a waitlist stored in
-the database.
+Manual entry, assigning, and the splitting math work signed out. **Signing in is
+required only for the AI receipt scan**, which is limited to approved accounts;
+everyone else can join a waitlist.
 
-The browser **never** talks to an AI provider and never holds the API key. The
-image is sent to a Vercel serverless function that holds `OPENAI_API_KEY`,
-verifies your Google sign-in, and calls the AI provider server-side.
+The browser never talks to an AI provider and never holds the API key:
 
 ```
 Browser (React PWA)
-  → Google Sign-In (gets an ID token; only prompted when scanning)
-  → POST /api/analyze-receipt  { imageBase64 }   Authorization: Bearer <id_token>
-       ↓  Vercel serverless function (holds OPENAI_API_KEY)
-       •  verifies the Google ID token + checks the allowlist
-          (ALLOWED_EMAILS env var OR access_requests table in Neon)
-       •  calls the active AI provider (chosen by AI_PROVIDER)
-       ↓
-     OpenAI   (key stays server-side)
-
-  → POST /api/join-waitlist   Authorization: Bearer <id_token>
-       ↓  records the verified email in Neon (access_requests, status 'waitlisted')
-
-  → GET|POST /api/access-requests   Authorization: Bearer <id_token>
-       ↓  admins only (ADMIN_EMAILS): list requests, approve/revoke, grant by email
+  → POST /api/analyze-receipt  { imageBase64 }   Authorization: Bearer <google_id_token>
+       ↓  Vercel function: verifies the token, checks the allowlist, calls OpenAI
+  → POST /api/join-waitlist     records the email in Neon (status 'waitlisted')
+  → GET|POST /api/access-requests   admins only: list, approve/reject/revoke, grant
 ```
-
-> For the internals — the splitting math, state/persistence, the provider
-> abstraction, and conventions for working in the code — see
-> [CLAUDE.md](CLAUDE.md).
 
 ## Environment variables
 
-Copy [`.env.local.example`](.env.local.example) to `.env.local` and fill it in.
-On Vercel, set the same variables in **Project Settings → Environment Variables**.
+Copy [`.env.local.example`](.env.local.example) to `.env.local`. On Vercel, set
+the same variables in **Project Settings → Environment Variables**.
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
 | `AI_PROVIDER` | server | Active provider (`openai`). |
 | `OPENAI_API_KEY` | server | OpenAI key. **Secret.** |
 | `OPENAI_MODEL` | server | Vision model, e.g. `gpt-5.4-mini`. |
-| `OPENAI_REASONING_EFFORT` | server | Optional. GPT-5.x reasoning effort: `none`\|`minimal`\|`low`\|`medium`\|`high`\|`xhigh`. Omit for model default. |
+| `OPENAI_REASONING_EFFORT` | server | Optional: `none`\|`minimal`\|`low`\|`medium`\|`high`\|`xhigh`. |
 | `GOOGLE_CLIENT_ID` | server | Verifies the ID token audience. |
-| `ALLOWED_EMAILS` | server | Comma-separated bootstrap allowlist (owner override + fallback when the DB is unreachable). |
-| `ADMIN_EMAILS` | server | Comma-separated admins, who get the in-app **Manage access** screen. Defaults to the owner account. Never stored in the DB. |
-| `DATABASE_URL` | server | Neon Postgres connection string. Backs the waitlist and the DB-managed allowlist. Optional locally. |
-| `VITE_GOOGLE_CLIENT_ID` | client | Same client ID, exposed to the browser for the Sign-In button (client IDs are public). |
-| `VITE_AMPLITUDE_API_KEY` | client | Amplitude key for analytics. Optional — leave blank to disable. |
+| `ALLOWED_EMAILS` | server | Comma-separated bootstrap allowlist; also the fallback when the DB is unreachable. |
+| `ADMIN_EMAILS` | server | Comma-separated admins. Defaults to the owner account. |
+| `DATABASE_URL` | server | Neon Postgres. Backs the waitlist and allowlist. Optional locally. |
+| `VITE_GOOGLE_CLIENT_ID` | client | Same client ID, for the Sign-In button. |
+| `VITE_AMPLITUDE_API_KEY` | client | Optional analytics. |
 
-## Waitlist & allowlist (Neon Postgres)
+## Setup (one time)
 
-One-time setup:
+**Google Sign-In:** in [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+create an OAuth 2.0 Client ID (Web application), add your origins
+(`http://localhost:3000`, your Vercel URL), and put the ID in both
+`GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID`.
 
-1. In the Vercel dashboard, go to **Storage → Create Database → Neon** (Marketplace
-   integration). Connecting it to the project injects `DATABASE_URL` into the
-   project's environment variables; copy it into `.env.local` for local dev.
-2. Run [`db/schema.sql`](db/schema.sql) once in the Neon SQL editor. (The
-   waitlist endpoint also creates the table lazily as a safety net.)
+**Database:** in Vercel, **Storage → Create Database → Neon** (injects
+`DATABASE_URL`), then run [`db/schema.sql`](db/schema.sql) once in the Neon SQL editor.
 
-Day to day, approvals happen **in the app**. Sign in as an admin (an address in
-`ADMIN_EMAILS`) and pick **Manage access** from the account menu to:
+## Managing access
 
-- see every request — pending first, then allowed, then rejected;
-- **Approve** or **Reject** a pending request, or **Revoke** someone's access;
-- **Grant** access to any email directly, whether or not they ever joined the
-  waitlist.
+Admins (`ADMIN_EMAILS`) get **Manage access** in the account menu to approve,
+reject, revoke, or grant access by email. Changes apply on the person's next
+scan — no redeploy. A rejected user can't re-queue themselves by re-joining, and
+any decision can be reversed.
 
-Rejecting keeps the row but takes the person off the pending list, and re-joining
-the waitlist won't put them back on it. Nothing is permanent: **Approve** on a
-rejected row undoes the decision. Rejected users see the same invite-only prompt
-as anyone without access — they aren't told they were specifically declined.
+Admin is env-only by design: the admin UI writes to `access_requests`, so it can
+never grant admin to anyone, including itself.
 
-Changes take effect on the person's next scan — no redeploy. The menu item is
-only visible to admins, and the endpoint behind it re-checks `ADMIN_EMAILS` on
-every request, so hiding it is a convenience, not the security boundary.
+Break-glass SQL:
 
-Admin is intentionally env-only and never stored in the database: the admin UI
-writes to `access_requests`, so keeping the role out of that table means the UI
-can't grant admin to anyone, including itself.
+```sql
+SELECT * FROM access_requests WHERE status = 'waitlisted' ORDER BY requested_at;
+UPDATE access_requests SET status = 'allowed', approved_at = now() WHERE email = 'person@example.com';
+```
 
-The equivalent SQL still works for break-glass use:
-
-- **Review requests:**
-  `SELECT * FROM access_requests WHERE status = 'waitlisted' ORDER BY requested_at;`
-- **Approve someone:**
-  `UPDATE access_requests SET status = 'allowed', approved_at = now() WHERE email = 'person@example.com';`
-
-`ALLOWED_EMAILS` also still works as before (append + redeploy) and doubles as
-the fallback if the database is ever unreachable — scanning never hard-breaks on
-a DB outage.
-
-Neon's free tier auto-suspends when idle and **auto-wakes on the next query**
-(~0.5–2 s cold start), so the app never needs a manual restore.
-
-## Google Sign-In setup (one time)
-
-1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
-   create an **OAuth 2.0 Client ID** of type **Web application**.
-2. Add your origins to **Authorized JavaScript origins**
-   (e.g. `http://localhost:3000` and your Vercel URL).
-3. Copy the client ID into both `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID`.
-
-## Run locally
-
-**Prerequisites:** Node.js.
+## Run & deploy
 
 ```bash
 npm install
-# Fill in .env.local (see above)
-npm run dev      # serves the frontend AND /api together on http://localhost:3000
+npm run dev       # UI + /api on http://localhost:3000
+vercel --prod     # deploy (set env vars in Vercel first)
 ```
 
-`npm run dev` runs the real serverless handler in-process via a dev-only Vite
-plugin, so receipt analysis works without the Vercel CLI. If you'd rather run
-the full stack through the Vercel CLI instead (`npm i -g vercel`), use
-`npm start` (`vercel dev`).
-
-> `npm run preview` serves the production build but **not** `/api`, so receipt
-> analysis won't work under it.
-
-## Deploy
-
-```bash
-vercel            # preview deploy
-vercel --prod     # production deploy
-```
-
-Set all environment variables in the Vercel dashboard before deploying.
+`npm run preview` serves the build **without** `/api`, so scanning won't work under it.
